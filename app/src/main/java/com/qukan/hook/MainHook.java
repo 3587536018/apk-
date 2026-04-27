@@ -662,7 +662,7 @@ public class MainHook implements IXposedHookLoadPackage {
                     LogServer.log("[AdAuto] 找到关闭按钮: " + closeBtn.getClass().getSimpleName()
                             + " (" + closeBtn.getWidth() + "x" + closeBtn.getHeight() + ")"
                             + " desc=" + closeBtn.getContentDescription());
-                    closeBtn.performClick();
+                    simulateClick(closeBtn);
                     return true;
                 }
             }
@@ -693,16 +693,11 @@ public class MainHook implements IXposedHookLoadPackage {
 
     /**
      * 递归查找关闭按钮
-     * 识别标准：
-     * 1. contentDescription 含 close/关闭/×/跳过
-     * 2. 或者 View 的 ID 名含 close/dismiss
-     * 3. 或者是角落的小尺寸可点击 ImageView
      */
     private android.view.View findCloseButton(android.view.View view) {
         if (view == null || view.getVisibility() != android.view.View.VISIBLE) return null;
-        // 跳过尺寸为 0 的隐藏 View（如 KsAutoCloseView 0x0）
+        // 跳过尺寸为 0 的隐藏 View
         if (view.getWidth() <= 0 || view.getHeight() <= 0) {
-            // 但仍递归其子 View
             if (view instanceof android.view.ViewGroup) {
                 android.view.ViewGroup vg = (android.view.ViewGroup) view;
                 for (int i = 0; i < vg.getChildCount(); i++) {
@@ -712,6 +707,9 @@ public class MainHook implements IXposedHookLoadPackage {
             }
             return null;
         }
+
+        // 排除静音/音量相关 View
+        if (isMuteButton(view)) return null;
 
         // 1. contentDescription 含关闭关键词
         CharSequence desc = view.getContentDescription();
@@ -747,12 +745,10 @@ public class MainHook implements IXposedHookLoadPackage {
             }
         }
 
-        // 4. 任何小尺寸可点击 View（不限类型，× 可能是自定义 View）
-        //    排除 ViewGroup 容器（避免匹配到布局容器）
+        // 4. 小尺寸可点击 View（非 ViewGroup，屏幕上半部分）
         if (!(view instanceof android.view.ViewGroup)
                 && view.getWidth() < 160 && view.getHeight() < 160) {
             boolean clickable = view.isClickable();
-            // 也检查 hasOnClickListeners（有些 View 不设 clickable 但有点击监听）
             if (!clickable) {
                 try { clickable = view.hasOnClickListeners(); } catch (Throwable ignored) {}
             }
@@ -766,7 +762,7 @@ public class MainHook implements IXposedHookLoadPackage {
             }
         }
 
-        // 5. 小尺寸 ViewGroup 容器（× 按钮可能是 FrameLayout 包裹 ImageView）
+        // 5. 小尺寸可点击 ViewGroup（FrameLayout 包 ImageView 的情况）
         if (view instanceof android.view.ViewGroup
                 && view.getWidth() > 0 && view.getWidth() < 160
                 && view.getHeight() > 0 && view.getHeight() < 160
@@ -788,6 +784,63 @@ public class MainHook implements IXposedHookLoadPackage {
             }
         }
         return null;
+    }
+
+    /**
+     * 判断是否为静音/音量按钮（排除误判）
+     */
+    private boolean isMuteButton(android.view.View view) {
+        // 检查 contentDescription
+        CharSequence desc = view.getContentDescription();
+        if (desc != null) {
+            String d = desc.toString().toLowerCase();
+            if (d.contains("mute") || d.contains("unmute") || d.contains("sound")
+                    || d.contains("volume") || d.contains("audio")
+                    || d.contains("静音") || d.contains("音量") || d.contains("声音")
+                    || d.contains("speaker") || d.contains("喇叭")) {
+                return true;
+            }
+        }
+        // 检查 View ID
+        try {
+            int id = view.getId();
+            if (id != android.view.View.NO_ID) {
+                String idName = view.getResources().getResourceEntryName(id).toLowerCase();
+                if (idName.contains("mute") || idName.contains("sound")
+                        || idName.contains("volume") || idName.contains("audio")
+                        || idName.contains("voice") || idName.contains("speaker")) {
+                    return true;
+                }
+            }
+        } catch (Throwable ignored) {}
+        // 检查类名
+        String clsName = view.getClass().getSimpleName().toLowerCase();
+        if (clsName.contains("mute") || clsName.contains("sound") || clsName.contains("volume")) {
+            return true;
+        }
+        return false;
+    }
+
+    /**
+     * 模拟触摸点击（比 performClick 更真实，某些 SDK 的 View 只响应 TouchEvent）
+     */
+    private void simulateClick(android.view.View view) {
+        // 先尝试 performClick
+        view.performClick();
+        // 再发送 MotionEvent 模拟真实触摸
+        int[] loc = new int[2];
+        view.getLocationOnScreen(loc);
+        float x = loc[0] + view.getWidth() / 2f;
+        float y = loc[1] + view.getHeight() / 2f;
+        long now = android.os.SystemClock.uptimeMillis();
+        android.view.MotionEvent down = android.view.MotionEvent.obtain(
+                now, now, android.view.MotionEvent.ACTION_DOWN, x, y, 0);
+        android.view.MotionEvent up = android.view.MotionEvent.obtain(
+                now, now + 50, android.view.MotionEvent.ACTION_UP, x, y, 0);
+        view.getRootView().dispatchTouchEvent(down);
+        view.getRootView().dispatchTouchEvent(up);
+        down.recycle();
+        up.recycle();
     }
 
     private Activity findForegroundNonAppActivity() {
