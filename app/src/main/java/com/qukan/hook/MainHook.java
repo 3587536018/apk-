@@ -245,8 +245,30 @@ public class MainHook implements IXposedHookLoadPackage {
                         @Override
                         protected void afterHookedMethod(MethodHookParam param) {
                             if (!blockNonRewardAds) return;
-                            LogServer.log("[AdAuto] 插屏广告已展示，5 秒后自动关闭");
+                            Object adInfo = param.args[0];
 
+                            // 获取广告网络名称
+                            String networkName = "";
+                            try {
+                                networkName = (String) XposedHelpers.callMethod(adInfo, "getNetworkName");
+                            } catch (Throwable ignored) {}
+
+                            LogServer.log("[AdAuto] 插屏广告展示 network=" + networkName);
+
+                            // 百度广告立即拦截关闭
+                            if ("baidu".equalsIgnoreCase(networkName)) {
+                                LogServer.log("[AdAuto] ⛔ 百度插屏，立即关闭");
+                                h().postDelayed(() -> {
+                                    try {
+                                        boolean closed = clickAdCloseButton();
+                                        if (!closed) closeAdActivities();
+                                        LogServer.log("[AdAuto] ✓ 百度插屏已处理");
+                                    } catch (Throwable ignored) {}
+                                }, 500);
+                                return;
+                            }
+
+                            // 其他广告延迟 5 秒关闭
                             h().postDelayed(() -> {
                                 try {
                                     boolean closed = clickAdCloseButton();
