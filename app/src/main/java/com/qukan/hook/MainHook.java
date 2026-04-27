@@ -324,7 +324,17 @@ public class MainHook implements IXposedHookLoadPackage {
                         // 有多余窗口，尝试找关闭按钮
                         boolean closed = clickAdCloseButton();
                         if (closed) {
-                            LogServer.log("[AdPoll] ✓ 轮询检测到广告并已关闭");
+                            LogServer.log("[AdPoll] ✓ 轮询检测到广告并已关闭，3 秒后触发返回");
+                            // 3 秒后发送 BACK 键清理残留
+                            h().postDelayed(() -> {
+                                new Thread(() -> {
+                                    try {
+                                        new android.app.Instrumentation().sendKeyDownUpSync(
+                                                android.view.KeyEvent.KEYCODE_BACK);
+                                        LogServer.log("[AdPoll] ✓ 已发送返回键");
+                                    } catch (Throwable ignored) {}
+                                }, "AdPollBack").start();
+                            }, 3000);
                         }
                     }
                 } catch (Throwable ignored) {}
