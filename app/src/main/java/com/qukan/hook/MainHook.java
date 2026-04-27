@@ -245,25 +245,18 @@ public class MainHook implements IXposedHookLoadPackage {
                         @Override
                         protected void afterHookedMethod(MethodHookParam param) {
                             if (!blockNonRewardAds) return;
+                            final Object interstitialAd = param.thisObject;
+                            final Object adInfo = param.args[0];
                             LogServer.log("[AdAuto] 插屏广告已展示，5 秒后自动关闭");
 
                             h().postDelayed(() -> {
                                 try {
-                                    // 实时查找当前顶层非 App 的 Activity（即广告 Activity）
-                                    Activity adAct = findForegroundNonAppActivity();
-                                    if (adAct != null && !adAct.isFinishing()) {
-                                        String name = adAct.getClass().getName();
-                                        LogServer.log("[AdAuto] 找到广告 Activity: " + name);
-                                        // 模拟 BACK 键
-                                        adAct.dispatchKeyEvent(new android.view.KeyEvent(
-                                                android.view.KeyEvent.ACTION_DOWN, android.view.KeyEvent.KEYCODE_BACK));
-                                        adAct.dispatchKeyEvent(new android.view.KeyEvent(
-                                                android.view.KeyEvent.ACTION_UP, android.view.KeyEvent.KEYCODE_BACK));
-                                        LogServer.log("[AdAuto] ✓ 已模拟返回键关闭");
-                                    } else {
-                                        LogServer.log("[AdAuto] ⚠ 未找到广告 Activity，尝试 finish 兜底");
-                                        closeAdActivities();
-                                    }
+                                    // 插屏广告是 Dialog/View 叠加，不是独立 Activity
+                                    // 直接调用 onVideoAdClosed 触发完整关闭回调链
+                                    java.lang.reflect.Method closedMethod = interstitialAd.getClass()
+                                            .getMethod("onVideoAdClosed", adInfo.getClass());
+                                    closedMethod.invoke(interstitialAd, adInfo);
+                                    LogServer.log("[AdAuto] ✓ 已调用 onVideoAdClosed 关闭插屏");
                                 } catch (Throwable t) {
                                     LogServer.log("[AdAuto] 插屏自动关闭异常: " + t.getMessage());
                                 }
