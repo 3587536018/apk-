@@ -695,7 +695,7 @@ public class MainHook implements IXposedHookLoadPackage {
     private android.view.View findCloseButton(android.view.View view) {
         if (view == null) return null;
 
-        // 检查 contentDescription
+        // 1. contentDescription 含关闭关键词
         CharSequence desc = view.getContentDescription();
         if (desc != null) {
             String d = desc.toString().toLowerCase();
@@ -707,7 +707,7 @@ public class MainHook implements IXposedHookLoadPackage {
             }
         }
 
-        // 检查 View ID 名称
+        // 2. View ID 名称含关闭关键词
         try {
             int id = view.getId();
             if (id != android.view.View.NO_ID) {
@@ -721,18 +721,30 @@ public class MainHook implements IXposedHookLoadPackage {
             }
         } catch (Throwable ignored) {}
 
-        // 检查小尺寸角落按钮（ImageView 系列，宽高 < 200px，位于顶部 300px 内）
-        if (view.getVisibility() == android.view.View.VISIBLE
-                && (view instanceof android.widget.ImageView || view instanceof android.widget.ImageButton)
-                && view.getWidth() > 0 && view.getWidth() < 200
-                && view.getHeight() > 0 && view.getHeight() < 200) {
-            int[] loc = new int[2];
-            view.getLocationOnScreen(loc);
-            if (loc[1] < 300) {
-                int screenW = view.getContext().getResources().getDisplayMetrics().widthPixels;
-                if (loc[0] < 250 || loc[0] > screenW - 250) {
+        // 3. TextView 含 × / ✕ / ✖ / X 等关闭符号
+        if (view instanceof android.widget.TextView && view.getVisibility() == android.view.View.VISIBLE) {
+            CharSequence text = ((android.widget.TextView) view).getText();
+            if (text != null) {
+                String t = text.toString().trim();
+                if (t.equals("×") || t.equals("✕") || t.equals("✖") || t.equals("X")
+                        || t.equals("x") || t.equals("关闭")) {
                     return view;
                 }
+            }
+        }
+
+        // 4. 小尺寸 ImageView（Dialog 窗口内，不限位置，只要在屏幕上半部分）
+        if (view.getVisibility() == android.view.View.VISIBLE
+                && (view instanceof android.widget.ImageView || view instanceof android.widget.ImageButton)
+                && view.getWidth() > 10 && view.getWidth() < 200
+                && view.getHeight() > 10 && view.getHeight() < 200
+                && view.isClickable()) {
+            int[] loc = new int[2];
+            view.getLocationOnScreen(loc);
+            int screenH = view.getContext().getResources().getDisplayMetrics().heightPixels;
+            // 在屏幕上半部分即可（弹窗居中，×在弹窗顶部）
+            if (loc[1] < screenH / 2) {
+                return view;
             }
         }
 
