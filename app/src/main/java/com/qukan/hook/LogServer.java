@@ -264,6 +264,9 @@ public class LogServer {
                         : "{\"running\":false,\"ready\":false}";
                 writeHttp(out, "200 OK", "application/json; charset=utf-8",
                         json.getBytes("UTF-8"));
+            } else if (path.startsWith("/api/poll")) {
+                // AJAX 轮询：返回日志和状态 JSON（无需整页刷新）
+                sendPollJson(out);
             } else if (path.startsWith("/json")) {
                 sendJson(out);
             } else {
@@ -482,11 +485,37 @@ public class LogServer {
 
             // === JS ===
             "<script>" +
+            "var _autoScroll=true;" +
             "var lb=document.getElementById('logbox');lb.scrollTop=lb.scrollHeight;" +
             "var bb=document.getElementById('botlogbox');if(bb)bb.scrollTop=bb.scrollHeight;" +
-            "setTimeout(()=>location.reload(),8000);" +
+            // 检测用户是否手动滚动了日志区（停止自动滚动）
+            "lb.addEventListener('scroll',function(){_autoScroll=lb.scrollTop+lb.clientHeight>=lb.scrollHeight-30;});" +
+            // AJAX 轮询替代整页刷新
+            "function pollUpdate(){" +
+            "fetch('/api/poll').then(r=>r.json()).then(d=>{" +
+            // 更新状态栏
+            "document.querySelectorAll('.stat-val')[0].textContent=d.logCount;" +
+            "document.querySelectorAll('.stat-val')[1].textContent=d.rewardCount;" +
+            "document.querySelectorAll('.stat-val')[2].textContent=d.errCount;" +
+            "document.querySelectorAll('.stat-val')[3].textContent=d.blockCount;" +
+            "document.querySelectorAll('.stat-val')[4].textContent=d.botSuccess;" +
+            "document.querySelectorAll('.stat-val')[5].textContent=d.botCoins;" +
+            // 更新 Hook 日志
+            "if(d.hookHtml){lb.innerHTML=d.hookHtml;if(_autoScroll)lb.scrollTop=lb.scrollHeight;}" +
+            // 更新 Bot 日志
+            "if(d.botHtml&&bb){bb.innerHTML=d.botHtml;bb.scrollTop=bb.scrollHeight;}" +
+            // 更新 Bot 状态栏计数
+            "var bh=document.querySelector('.logs-header span[style]');" +
+            "if(bh)bh.textContent='● '+d.botSuccess+' 成功 / '+d.botFail+' 失败';" +
+            // 更新开关状态
+            "var ts=document.getElementById('ts_bot');var tc=document.getElementById('tc_bot');" +
+            "if(ts){if(d.botRunning){ts.className='t-status t-on';ts.textContent='✓ 运行中';tc.style.borderColor='var(--green)';}" +
+            "else{ts.className='t-status t-off';ts.textContent='■ 已停止';tc.style.borderColor='var(--border)';}}" +
+            "}).catch(()=>{});" +
+            "setTimeout(pollUpdate,3000);}" +
+            "setTimeout(pollUpdate,3000);" +
             "function doTrigger(){var m=document.getElementById('msg');m.style.color='var(--orange)';m.textContent='触发中...';" +
-            "fetch('/trigger').then(r=>r.json()).then(d=>{m.style.color='var(--green)';m.textContent=d.result;setTimeout(()=>location.reload(),2500);}).catch(e=>{m.style.color='var(--red)';m.textContent='失败';});}" +
+            "fetch('/trigger').then(r=>r.json()).then(d=>{m.style.color='var(--green)';m.textContent=d.result;setTimeout(pollUpdate,1500);}).catch(e=>{m.style.color='var(--red)';m.textContent='失败';});}" +
             "function setCreds(){var o=document.getElementById('inp_oaid').value,t=document.getElementById('inp_token').value,u=document.getElementById('inp_user_json').value;" +
             "fetch('/set_creds?oaid='+encodeURIComponent(o)+'&token='+encodeURIComponent(t)+'&user_json='+encodeURIComponent(u)).then(r=>r.json()).then(()=>{alert('凭证已注入！');location.reload();});}" +
             "function toggleSkip(){fetch('/toggle_skip').then(r=>r.json()).then(d=>{var s=document.getElementById('ts_skip');" +
@@ -527,7 +556,56 @@ public class LogServer {
     }
 
     // ---------------------------------------------------------------
-    // 302 重定向
+    // AJAX 轮询接口：返回日志 HTML + 状态数据 JSON
+    // ---------------------------------------------------------------
+    private static void sendPollJson(OutputStream out) throws IOException {
+        int rewardCount = 0, errCount = 0, blockCount = 0;
+        StringBuilder hookHtml = new StringBuilder();
+        synchronized (logs) {
+            for (int idx = 0; idx < logs.size(); idx++) {
+                String l = logs.get(idx);
+                if (l.contains("★")) rewardCount++;
+                if (l.contains("失败") || l.contains("STOP") || l.contains("异常")) errCount++;
+                if (l.contains("[AdBlock]") && l.contains("已拦截")) blockCount++;
+                String cls = "log-n";
+                if (l.contains("★") || l.contains("Reward")) cls = "log-r";
+                else if (l.contains("失败") || l.contains("STOP") || l.contains("异常")) cls = "log-e";
+                else if (l.contains("[AdBlock]")) cls = "log-b";
+                else if (l.contains("✓") || l.contains("激活") || l.contains("成功")) cls = "log-i";
+                hookHtml.append("<div class='log-row ").append(cls).append("'>")
+                        .append("<span class='log-dot'></span>").append(escHtml(l)).append("</div>");
+            }
+        }
+        StringBuilder botHtml = new StringBuilder();
+        synchronized (botLogs) {
+            for (int idx = 0; idx < botLogs.size(); idx++) {
+                String l = botLogs.get(idx);
+                String cls = "log-n";
+                if (l.contains("★") || l.contains("成功")) cls = "log-r";
+                else if (l.contains("✗") || l.contains("失败") || l.contains("异常")) cls = "log-e";
+                else if (l.contains("📊") || l.contains("参数")) cls = "log-i";
+                else if (l.contains("▶") || l.contains("■")) cls = "log-b";
+                botHtml.append("<div class='log-row ").append(cls).append("'>")
+                        .append("<span class='log-dot'></span>").append(escHtml(l)).append("</div>");
+            }
+        }
+        String json = "{" +
+                "\"logCount\":" + logs.size() + "," +
+                "\"rewardCount\":" + rewardCount + "," +
+                "\"errCount\":" + errCount + "," +
+                "\"blockCount\":" + blockCount + "," +
+                "\"botSuccess\":" + AdRewardBot.botSuccessCount + "," +
+                "\"botFail\":" + AdRewardBot.botFailCount + "," +
+                "\"botCoins\":" + AdRewardBot.botTotalCoins + "," +
+                "\"botPending\":" + AdRewardBot.botPendingCoins + "," +
+                "\"botRunning\":" + AdRewardBot.botRunning + "," +
+                "\"hookHtml\":\"" + escJson(hookHtml.toString()) + "\"," +
+                "\"botHtml\":\"" + escJson(botHtml.toString()) + "\"" +
+                "}";
+        writeHttp(out, "200 OK", "application/json; charset=utf-8", json.getBytes("UTF-8"));
+    }
+
+
     // ---------------------------------------------------------------
     private static void sendRedirect(OutputStream out, String location) throws IOException {
         String resp = "HTTP/1.1 302 Found\r\nLocation: " + location + "\r\nContent-Length: 0\r\n\r\n";
