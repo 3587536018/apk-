@@ -185,18 +185,32 @@ public class AdRewardBot {
     private static String buildAndEncrypt() throws Exception {
         long nowMs = System.currentTimeMillis();
 
-        // 广告配置池（从真实 Hook 数据提取）
-        // 格式: {admodel_id, admodel_value, adplatform_name, adtype_id, adtype_name, network_placement_id, reward_rate, ecpm_min, ecpm_max}
+        // 广告配置池（与 main.py 完全同步）
+        // 格式: {admodel_id, admodel_value, adplatform_name, adtype_id, adtype_name, network_placement_id, ecpm_min, ecpm_max, amount_min, amount_max}
         String[][] adPool = {
-            {"64", "8983638867376500", "gdt", "64", "信息流广告", "9248159160678469", "0.60", "58", "361"},
-            {"64", "8983638867376500", "kuaishou", "64", "信息流广告", "32194000050", "0.60", "31", "45"},
-            {"65", "5491239561962900", "gdt", "65", "插屏广告", "6268450130179263", "0.60", "1000", "10160"},
-            {"65", "5491239561962900", "gdt", "65", "插屏广告", "5278953120871194", "0.60", "2000", "2000"},
-            {"65", "5491239561962900", "gdt", "65", "插屏广告", "7238757190673126", "0.60", "4000", "4000"},
-            {"65", "5491239561962900", "gdt", "65", "插屏广告", "7238452140874155", "0.60", "3000", "3000"},
-            {"65", "5491239561962900", "gdt", "65", "插屏广告", "2228458100274113", "0.60", "1000", "1000"},
-            {"65", "5491239561962900", "gromore", "65", "插屏广告", "103956914", "0.60", "334", "1627"},
-            {"63", "5169829687932834", "gdt", "63", "Banner广告", "5278357170370989", "0.60", "86", "142"},
+            // 信息流广告
+            {"64", "8983638867376500", "gdt", "64", "信息流广告", "9248159160678469", "600", "3000", "3", "30"},
+            {"64", "8983638867376500", "gromore", "64", "信息流广告", "103956908", "600", "3000", "5", "30"},
+            {"64", "8983638867376500", "kuaishou", "64", "信息流广告", "32194000050", "600", "3000", "3", "30"},
+            {"64", "8983638867376500", "baidu", "64", "信息流广告", "19232858", "20", "300", "1", "20"},
+            {"64", "8983638867376500", "kuaishou", "64", "信息流广告", "32194000051", "600", "1500", "40", "80"},
+            // Banner广告
+            {"63", "5169829687932834", "gdt", "63", "Banner广告", "5278357170370989", "200", "2500", "10", "150"},
+            {"63", "5169829687932834", "gromore", "63", "Banner广告", "103955933", "400", "2500", "10", "150"},
+            {"63", "5169829687932834", "kuaishou", "63", "Banner广告", "32194000012", "800", "2600", "10", "150"},
+            {"63", "5169829687932834", "kuaishou", "63", "Banner广告", "32194000014", "500", "1500", "30", "90"},
+            // 插屏广告
+            {"65", "5491239561962900", "gromore", "65", "插屏广告", "103956914", "7000", "9000", "20", "240"},
+            {"65", "5491239561962900", "gdt", "65", "插屏广告", "6268450130179263", "5000", "15000", "20", "240"},
+            {"65", "5491239561962900", "gdt", "65", "插屏广告", "5278953120871194", "5000", "15000", "20", "240"},
+            {"65", "5491239561962900", "gromore", "65", "插屏广告", "103955254", "5000", "15000", "20", "240"},
+            {"65", "5491239561962900", "baidu", "65", "插屏广告", "19233026", "2500", "4000", "150", "250"},
+            {"65", "5491239561962900", "kuaishou", "65", "插屏广告", "32194000061", "7000", "15000", "350", "600"},
+            {"65", "5491239561962900", "gdt", "65", "插屏广告", "7208457110579137", "7000", "15000", "350", "420"},
+            {"65", "5491239561962900", "gdt", "65", "插屏广告", "7238452140874155", "7000", "15000", "350", "420"},
+            {"65", "5491239561962900", "gdt", "65", "插屏广告", "7238757190673126", "7000", "15000", "350", "420"},
+            {"65", "5491239561962900", "kuaishou", "65", "插屏广告", "32194000066", "5000", "15000", "300", "450"},
+            {"65", "5491239561962900", "kuaishou", "65", "插屏广告", "32194000064", "5000", "15000", "300", "450"},
         };
 
         // 随机抽取 2~3 条不重复的广告
@@ -217,12 +231,13 @@ public class AdRewardBot {
 
         for (int i = 0; i < adCount; i++) {
             String[] ad = shuffled[i];
-            int ecpmMin = Integer.parseInt(ad[7]);
-            int ecpmMax = Integer.parseInt(ad[8]);
+            int ecpmMin = Integer.parseInt(ad[6]);
+            int ecpmMax = Integer.parseInt(ad[7]);
+            int amountMin = Integer.parseInt(ad[8]);
+            int amountMax = Integer.parseInt(ad[9]);
             int ecpm = randomInt(ecpmMin, ecpmMax);
             double money = ecpm / 10000.0;
-            double rewardRate = Double.parseDouble(ad[6]);
-            int amount = (int) (money * rewardRate * 10000);
+            int amount = randomInt(amountMin, amountMax);
 
             JSONObject item = new JSONObject();
             item.put("admodel_id", ad[0]);
@@ -239,10 +254,10 @@ public class AdRewardBot {
             item.put("loadId", UUID.randomUUID().toString());
             item.put("network_placement_id", ad[5]);
             item.put("real_money", money >= 0.001 ? String.format("%.10f", money) : String.format("%.1E", money));
-            item.put("reward_rate", ad[6]);
+            item.put("reward_rate", "0.60");
             details.put(item);
 
-            logMsg.append(" ").append(ad[4]).append("(").append(ad[2]).append(") ecpm=").append(ecpm);
+            logMsg.append(" ").append(ad[4]).append("(").append(ad[2]).append(") ecpm=").append(ecpm).append(" amt=").append(amount);
         }
         LogServer.botLog(logMsg.toString());
 
