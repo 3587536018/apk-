@@ -135,7 +135,6 @@ public class AdRewardBot {
             conn.setConnectTimeout(15000);
             conn.setReadTimeout(15000);
             conn.setRequestProperty("User-Agent", "okhttp/4.9.0");
-            conn.setRequestProperty("Accept-Encoding", "gzip");
             conn.setRequestProperty("Content-Type", "application/json");
             conn.setRequestProperty("accept-language", "zh-CN");
             conn.setRequestProperty("authorization", "Bearer " + bearer);
@@ -148,9 +147,10 @@ public class AdRewardBot {
             os.flush();
             os.close();
 
-            // 读取响应
+            // 读取响应（自动处理 gzip）
             int responseCode = conn.getResponseCode();
             InputStream is = responseCode < 400 ? conn.getInputStream() : conn.getErrorStream();
+            // HttpURLConnection 会自动解压 gzip
             String resp = readString(is);
             conn.disconnect();
 
