@@ -221,6 +221,14 @@ public class LogServer {
                 log("[Config] 非激励广告拦截: " + (MainHook.blockNonRewardAds ? "已开启(拦截中)" : "已关闭(放行)"));
                 String body = "{\"blockNonRewardAds\":" + MainHook.blockNonRewardAds + "}";
                 writeHttp(out, "200 OK", "application/json; charset=utf-8", body.getBytes("UTF-8"));
+            } else if (path.startsWith("/bot_start")) {
+                AdRewardBot.start();
+                String body = "{\"botRunning\":" + AdRewardBot.botRunning + "}";
+                writeHttp(out, "200 OK", "application/json; charset=utf-8", body.getBytes("UTF-8"));
+            } else if (path.startsWith("/bot_stop")) {
+                AdRewardBot.stop();
+                String body = "{\"botRunning\":false}";
+                writeHttp(out, "200 OK", "application/json; charset=utf-8", body.getBytes("UTF-8"));
             } else if (path.startsWith("/trigger")) {
                 // 主动触发一次刷金币流程
                 String result;
@@ -317,7 +325,7 @@ public class LogServer {
             ".stat-item:last-child{border-right:none}" +
             ".stat-val{font-size:22px;font-weight:700;font-family:'JetBrains Mono',monospace}" +
             ".stat-label{font-size:11px;color:var(--text2);margin-top:2px;text-transform:uppercase;letter-spacing:.5px}" +
-            ".v-green{color:var(--green)}.v-red{color:var(--red)}.v-blue{color:var(--blue)}.v-orange{color:var(--orange)}" +
+            ".v-green{color:var(--green)}.v-red{color:var(--red)}.v-blue{color:var(--blue)}.v-orange{color:var(--orange)}.v-purple{color:var(--purple)}" +
 
             // 卡片
             ".card{margin:12px 16px;padding:16px;background:var(--card);border:1px solid var(--border);border-radius:12px;" +
@@ -389,6 +397,8 @@ public class LogServer {
             "<div class='stat-item'><div class='stat-val v-green'>" + rewardCount + "</div><div class='stat-label'>奖励次数</div></div>" +
             "<div class='stat-item'><div class='stat-val v-red'>" + errCount + "</div><div class='stat-label'>错误</div></div>" +
             "<div class='stat-item'><div class='stat-val v-orange'>" + blockCount + "</div><div class='stat-label'>广告拦截</div></div>" +
+            "<div class='stat-item'><div class='stat-val v-purple'>" + AdRewardBot.botSuccessCount + "</div><div class='stat-label'>Bot成功</div></div>" +
+            "<div class='stat-item'><div class='stat-val v-green'>" + AdRewardBot.botTotalCoins + "</div><div class='stat-label'>Bot金币</div></div>" +
             "</div>" +
 
             // === 开关面板 ===
@@ -399,6 +409,9 @@ public class LogServer {
             "<div class='toggle-card' id='tc_block' onclick='toggleBlock()'>" +
             "<div class='t-icon'>🛡</div><div class='t-label'>拦截非激励广告</div>" +
             "<div class='t-status " + (blockOn ? "t-on" : "t-off") + "' id='ts_block'>" + (blockOn ? "✓ 拦截中" : "✗ 已放行") + "</div></div>" +
+            "<div class='toggle-card' id='tc_bot' onclick='toggleBot()' style='border-color:" + (AdRewardBot.botRunning ? "var(--green)" : "var(--border)") + "'>" +
+            "<div class='t-icon'>🤖</div><div class='t-label'>广告奖励 Bot</div>" +
+            "<div class='t-status " + (AdRewardBot.botRunning ? "t-on" : "t-off") + "' id='ts_bot'>" + (AdRewardBot.botRunning ? "✓ 运行中" : "■ 已停止") + "</div></div>" +
             "</div>" +
 
             // === 账号卡片 ===
@@ -436,6 +449,12 @@ public class LogServer {
             "if(d.skipAdEnabled){s.className='t-status t-on';s.textContent='✓ 已开启';}else{s.className='t-status t-off';s.textContent='✗ 已关闭';}});}" +
             "function toggleBlock(){fetch('/toggle_blockads').then(r=>r.json()).then(d=>{var s=document.getElementById('ts_block');" +
             "if(d.blockNonRewardAds){s.className='t-status t-on';s.textContent='✓ 拦截中';}else{s.className='t-status t-off';s.textContent='✗ 已放行';}});}" +
+            "function toggleBot(){var s=document.getElementById('ts_bot'),c=document.getElementById('tc_bot');" +
+            "var isOn=s.textContent.indexOf('运行')>=0;" +
+            "fetch(isOn?'/bot_stop':'/bot_start').then(r=>r.json()).then(d=>{" +
+            "if(d.botRunning){s.className='t-status t-on';s.textContent='✓ 运行中';c.style.borderColor='var(--green)';}" +
+            "else{s.className='t-status t-off';s.textContent='■ 已停止';c.style.borderColor='var(--border)';}" +
+            "setTimeout(()=>location.reload(),2000);});}" +
             "function copyText(id,btn){var t=document.getElementById(id).textContent;if(!t||t==='未设置'){return;}" +
             "navigator.clipboard.writeText(t).then(()=>{btn.classList.add('copied');btn.textContent='✓ 已复制';" +
             "setTimeout(()=>{btn.classList.remove('copied');btn.textContent='📋 复制';},1500);" +
