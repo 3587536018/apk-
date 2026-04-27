@@ -52,18 +52,18 @@ public class AdRewardBot {
      */
     public static void start() {
         if (botRunning) {
-            LogServer.log("[Bot] ⚠ 已在运行中，忽略重复启动");
+            LogServer.botLog("[Bot] ⚠ 已在运行中，忽略重复启动");
             return;
         }
         stopRequested = false;
         botThread = new Thread(() -> {
             botRunning = true;
-            LogServer.log("[Bot] ▶ 广告奖励 Bot 已启动");
+            LogServer.botLog("[Bot] ▶ 广告奖励 Bot 已启动");
             try {
                 while (!stopRequested) {
                     String token = MainHook.customToken;
                     if (token == null || token.isEmpty()) {
-                        LogServer.log("[Bot] ✗ Token 未设置，等待 30 秒后重试...");
+                        LogServer.botLog("[Bot] ✗ Token 未设置，等待 30 秒后重试...");
                         sleep(30000);
                         continue;
                     }
@@ -79,27 +79,27 @@ public class AdRewardBot {
                             coins = data.optInt("coins", 0);
                             botTotalCoins += coins;
                         }
-                        LogServer.log("[Bot] ★ 成功! 获得 " + coins + " 金币 (累计: " + botTotalCoins + ", 成功: " + botSuccessCount + ")");
+                        LogServer.botLog("[Bot] ★ 成功! 获得 " + coins + " 金币 (累计: " + botTotalCoins + ", 成功: " + botSuccessCount + ")");
 
                         // 如果获得 6000 金币，额外等待
                         int delay = randomInt(8, 18) * 1000;
                         if (coins == 6000) {
                             delay = 20000;
-                            LogServer.log("[Bot] ⏳ 高额奖励，冷却 20 秒");
+                            LogServer.botLog("[Bot] ⏳ 高额奖励，冷却 20 秒");
                         }
                         sleep(delay);
                     } else {
                         botFailCount++;
                         String msg = result.optString("Message", "未知错误");
-                        LogServer.log("[Bot] ✗ 失败 (" + code + "): " + msg + " (失败: " + botFailCount + ")");
+                        LogServer.botLog("[Bot] ✗ 失败 (" + code + "): " + msg + " (失败: " + botFailCount + ")");
                         sleep(40000);
                     }
                 }
             } catch (Exception e) {
-                LogServer.log("[Bot] ✗ 异常退出: " + e.getMessage());
+                LogServer.botLog("[Bot] ✗ 异常退出: " + e.getMessage());
             } finally {
                 botRunning = false;
-                LogServer.log("[Bot] ■ 广告奖励 Bot 已停止");
+                LogServer.botLog("[Bot] ■ 广告奖励 Bot 已停止");
             }
         }, "AdRewardBot");
         botThread.setDaemon(true);
@@ -111,11 +111,11 @@ public class AdRewardBot {
      */
     public static void stop() {
         if (!botRunning) {
-            LogServer.log("[Bot] ⚠ Bot 未在运行");
+            LogServer.botLog("[Bot] ⚠ Bot 未在运行");
             return;
         }
         stopRequested = true;
-        LogServer.log("[Bot] ■ 正在停止...");
+        LogServer.botLog("[Bot] ■ 正在停止...");
         if (botThread != null) {
             botThread.interrupt();
         }
@@ -188,7 +188,7 @@ public class AdRewardBot {
         double moneyInter = ecpmInter / 10000.0;
         int interAmount = (int) (moneyInter * 10000);
 
-        LogServer.log("[Bot] 📊 参数: 信息流 ecpm=" + ecpmFeed + " 插屏 ecpm=" + ecpmInter);
+        LogServer.botLog("[Bot] 📊 参数: 信息流 ecpm=" + ecpmFeed + " 插屏 ecpm=" + ecpmInter);
 
         // 构建广告详情 JSON 数组
         JSONArray details = new JSONArray();

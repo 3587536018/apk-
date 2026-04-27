@@ -127,14 +127,31 @@ public class MainHook implements IXposedHookLoadPackage {
                 protected void beforeHookedMethod(MethodHookParam param) {
                     if (appContext == null) {
                         appContext = (android.content.Context) param.thisObject;
+                        // 1. 先从 hook_creds 恢复我们自己存的凭证
                         android.content.SharedPreferences sp = appContext.getSharedPreferences("hook_creds", 0);
                         String diskOaid = sp.getString("oaid", null);
-                        // Only load from disk if memory is empty (in case they injected via web before this fired)
                         if (customOaid == null && diskOaid != null) {
                             customOaid = diskOaid;
                             customToken = sp.getString("token", null);
                             customUserJson = sp.getString("user_json", null);
                             LogServer.log("[Config] Loaded persisted creds: OAID=" + customOaid);
+                        }
+                        // 2. 如果仍然没有 Token，尝试从 App 的原生 SP 中读取
+                        if (customToken == null || customToken.isEmpty()) {
+                            try {
+                                android.content.SharedPreferences appSp = appContext.getSharedPreferences("video_advert_sing", 0);
+                                String userJson = appSp.getString("USER_LOGIN_ENTITY", null);
+                                if (userJson != null && !userJson.isEmpty()) {
+                                    org.json.JSONObject uj = new org.json.JSONObject(userJson);
+                                    String appToken = uj.optString("access_token", "");
+                                    if (!appToken.isEmpty()) {
+                                        customToken = appToken;
+                                        LogServer.log("[AutoToken] ★ 从 App SP 自动读取到 Token: " + appToken.substring(0, Math.min(20, appToken.length())) + "...");
+                                    }
+                                }
+                            } catch (Exception e) {
+                                LogServer.log("[AutoToken] 从 App SP 读取 Token 失败: " + e.getMessage());
+                            }
                         }
                     }
                 }
@@ -836,38 +853,54 @@ public class MainHook implements IXposedHookLoadPackage {
             XposedBridge.log("QukanHook [Hook] hookCustomCredentials (OAID) FAIL: " + t);
         }
 
-        // Hook Token
+        // Hook Token — 双向：捕获 + 替换
         try {
             Class<?> tokenMgrClass = XposedHelpers.findClass("com.example.advertisinglibrary.util.TokenManager", cl);
-            XposedHelpers.findAndHookMethod(tokenMgrClass, "getAccessToken", new XC_MethodReplacement() {
+            XposedHelpers.findAndHookMethod(tokenMgrClass, "getAccessToken", new XC_MethodHook() {
                 @Override
-                protected Object replaceHookedMethod(MethodHookParam param) throws Throwable {
+                protected void afterHookedMethod(MethodHookParam param) throws Throwable {
+                    String origToken = (String) param.getResult();
+                    // 如果我们有自定义 Token，使用自定义的
                     if (customToken != null && !customToken.isEmpty()) {
-                        return customToken;
+                        param.setResult(customToken);
+                    } else if (origToken != null && !origToken.isEmpty()) {
+                        // 如果没有自定义 Token 但 App 有，自动捕获
+                        customToken = origToken;
+                        LogServer.log("[AutoToken] ★ 从 TokenManager 捕获到 Token: " + origToken.substring(0, Math.min(20, origToken.length())) + "...");
                     }
-                    return XposedBridge.invokeOriginalMethod(param.method, param.thisObject, param.args);
                 }
             });
-            XposedBridge.log("QukanHook [Hook] hookCustomCredentials (Token) OK");
+            XposedBridge.log("QukanHook [Hook] hookCustomCredentials (Token Capture+Replace) OK");
         } catch (Throwable t) {
             XposedBridge.log("QukanHook [Hook] hookCustomCredentials (Token) FAIL: " + t);
         }
 
-        // Hook i4.b.a (Global Retrofit Header Setter) to FORCE token
+        // Hook i4.b.a (Global Retrofit Header Setter) — 捕获 + 替换 Token
         try {
             Class<?> i4bClass = XposedHelpers.findClass("i4.b", cl);
             XposedHelpers.findAndHookMethod(i4bClass, "a", String.class, String.class, new XC_MethodHook() {
                 @Override
                 protected void beforeHookedMethod(MethodHookParam param) throws Throwable {
                     String key = (String) param.args[0];
-                    if ("Authorization".equals(key) && customToken != null && !customToken.isEmpty()) {
-                        String cleanToken = customToken.trim().replace("\"", "");
-                        param.args[1] = "Bearer " + cleanToken;
-                        LogServer.log("[Inject] 强制替换了 i4.b.a 的 Authorization 请求头");
+                    if ("Authorization".equals(key)) {
+                        String headerVal = (String) param.args[1];
+                        // 自动捕获：如果还没有 Token 但 Header 中有
+                        if ((customToken == null || customToken.isEmpty()) && headerVal != null && headerVal.startsWith("Bearer ")) {
+                            String captured = headerVal.substring(7).trim();
+                            if (!captured.isEmpty()) {
+                                customToken = captured;
+                                LogServer.log("[AutoToken] ★ 从 HTTP Header 捕获到 Token: " + captured.substring(0, Math.min(20, captured.length())) + "...");
+                            }
+                        }
+                        // 替换：如果有自定义 Token，强制使用
+                        if (customToken != null && !customToken.isEmpty()) {
+                            String cleanToken = customToken.trim().replace("\"", "");
+                            param.args[1] = "Bearer " + cleanToken;
+                        }
                     }
                 }
             });
-            XposedBridge.log("QukanHook [Hook] hookCustomCredentials (i4.b.a Header Inject) OK");
+            XposedBridge.log("QukanHook [Hook] hookCustomCredentials (i4.b.a Header Capture+Inject) OK");
         } catch (Throwable t) {
             XposedBridge.log("QukanHook [Hook] hookCustomCredentials (i4.b.a Header Inject) FAIL: " + t);
         }

@@ -34,6 +34,10 @@ public class LogServer {
     private static final List<String> logs =
             Collections.synchronizedList(new LinkedList<>());
 
+    // Bot 独立日志列表
+    private static final List<String> botLogs =
+            Collections.synchronizedList(new LinkedList<>());
+
     private static volatile boolean started = false;
 
     // 主动触发广告流程的回调接口
@@ -58,6 +62,15 @@ public class LogServer {
             while (logs.size() > MAX_LINES) logs.remove(0);
         }
         XposedBridge.log("QukanHook " + msg);
+    }
+
+    // Bot 专用日志（不混入主日志）
+    public static void botLog(String msg) {
+        String line = SDF.format(new Date()) + "  " + msg;
+        synchronized (botLogs) {
+            botLogs.add(line);
+            while (botLogs.size() > MAX_LINES) botLogs.remove(0);
+        }
     }
 
     // ---------------------------------------------------------------
@@ -282,6 +295,21 @@ public class LogServer {
             }
         }
 
+        // Bot 独立日志
+        StringBuilder botRows = new StringBuilder();
+        synchronized (botLogs) {
+            for (int idx = 0; idx < botLogs.size(); idx++) {
+                String l = botLogs.get(idx);
+                String cls = "log-n";
+                if (l.contains("★") || l.contains("成功")) cls = "log-r";
+                else if (l.contains("✗") || l.contains("失败") || l.contains("异常")) cls = "log-e";
+                else if (l.contains("📊") || l.contains("参数")) cls = "log-i";
+                else if (l.contains("▶") || l.contains("■")) cls = "log-b";
+                botRows.append("<div class='log-row ").append(cls).append("' style='animation-delay:").append(idx * 0.01).append("s'>")
+                        .append("<span class='log-dot'></span>").append(escHtml(l)).append("</div>\n");
+            }
+        }
+
         boolean skipOn = MainHook.skipAdEnabled;
         boolean blockOn = MainHook.blockNonRewardAds;
 
@@ -432,14 +460,26 @@ public class LogServer {
 
             buildWithdrawSection() +
 
-            // === 日志区 ===
-            "<div class='logs-wrap'>" +
-            "<div class='logs-header'><span>📋 运行日志</span><span id='autoTag' style='color:var(--green)'>● 自动刷新</span></div>" +
+            // === 日志区（双栏） ===
+            "<div style='display:flex;gap:0;flex-wrap:wrap'>" +
+
+            // Hook 日志
+            "<div class='logs-wrap' style='flex:1;min-width:300px'>" +
+            "<div class='logs-header'><span>📋 Hook 日志</span><span id='autoTag' style='color:var(--green)'>● 自动刷新</span></div>" +
             "<div class='logs-body' id='logbox'>" + rows + "</div></div>" +
+
+            // Bot 日志
+            "<div class='logs-wrap' style='flex:1;min-width:300px'>" +
+            "<div class='logs-header' style='background:linear-gradient(135deg,rgba(168,85,247,.15),rgba(99,102,241,.08))'><span>🤖 Bot 日志</span>" +
+            "<span style='color:var(--purple)'>● " + AdRewardBot.botSuccessCount + " 成功 / " + AdRewardBot.botFailCount + " 失败</span></div>" +
+            "<div class='logs-body' id='botlogbox'>" + botRows + "</div></div>" +
+
+            "</div>" +
 
             // === JS ===
             "<script>" +
             "var lb=document.getElementById('logbox');lb.scrollTop=lb.scrollHeight;" +
+            "var bb=document.getElementById('botlogbox');if(bb)bb.scrollTop=bb.scrollHeight;" +
             "setTimeout(()=>location.reload(),8000);" +
             "function doTrigger(){var m=document.getElementById('msg');m.style.color='var(--orange)';m.textContent='触发中...';" +
             "fetch('/trigger').then(r=>r.json()).then(d=>{m.style.color='var(--green)';m.textContent=d.result;setTimeout(()=>location.reload(),2500);}).catch(e=>{m.style.color='var(--red)';m.textContent='失败';});}" +
