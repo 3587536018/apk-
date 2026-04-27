@@ -574,6 +574,7 @@ public class MainHook implements IXposedHookLoadPackage {
 
     /**
      * 查找当前最顶层的广告 SDK Activity
+     * 匹配所有已知广告 SDK 包名
      */
     private Activity findTopAdActivity() {
         try {
@@ -588,9 +589,8 @@ public class MainHook implements IXposedHookLoadPackage {
                 Activity act = (Activity) XposedHelpers.getObjectField(record, "activity");
                 if (act != null && !act.isFinishing()) {
                     String name = act.getClass().getName();
-                    if (name.startsWith("com.windmill") || name.startsWith("com.czhj")
-                            || name.startsWith("com.sigmob")) {
-                        topAd = act; // 取最后一个（通常是最顶层）
+                    if (isAdActivity(name)) {
+                        topAd = act;
                     }
                 }
             }
@@ -598,6 +598,27 @@ public class MainHook implements IXposedHookLoadPackage {
         } catch (Throwable t) {
             return null;
         }
+    }
+
+    /**
+     * 判断是否为广告 SDK 的 Activity
+     */
+    private boolean isAdActivity(String className) {
+        return className.startsWith("com.windmill")
+            || className.startsWith("com.czhj")
+            || className.startsWith("com.sigmob")
+            || className.startsWith("com.bytedance")
+            || className.startsWith("com.byted")
+            || className.startsWith("com.pangle")
+            || className.startsWith("com.kuaishou")
+            || className.startsWith("com.kwad")
+            || className.startsWith("com.kwai")
+            || className.startsWith("com.baidu")
+            || className.startsWith("com.tencent")
+            || className.startsWith("com.qq.e.")
+            || className.startsWith("com.volcengine")
+            || className.startsWith("com.hihonor")
+            || className.startsWith("com.huawei");
     }
 
     /**
