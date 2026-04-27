@@ -58,10 +58,11 @@ public class AdRewardBot {
 
                 while (!stopRequested) {
                     try {
-                        int injected = injectAds();
-                        if (injected > 0) {
+                        int coins = injectOneAd();
+                        if (coins >= 0) {
                             botSuccessCount++;
-                            LogServer.botLog("[Bot] ★ 注入 " + injected + " 条广告 (待刷: " + botPendingCoins + ", 总计: " + botTotalCoins + ", 轮次: " + botSuccessCount + ")");
+                            botPendingCoins += coins;
+                            LogServer.botLog("[Bot] ★ 注入成功 gold=" + coins + " (待刷: " + botPendingCoins + ", 总计: " + botTotalCoins + ", 第 " + botSuccessCount + " 条)");
 
                             // 累积达到 6000 金币时触发刷币
                             if (botPendingCoins >= 6000) {
@@ -89,6 +90,7 @@ public class AdRewardBot {
                                 LogServer.botLog("[Bot] ⏳ 冷却 20 秒");
                                 sleep(20000);
                             } else {
+                                // 每条广告间隔 8~18 秒
                                 int delay = randomInt(8, 18) * 1000;
                                 sleep(delay);
                             }
@@ -162,70 +164,37 @@ public class AdRewardBot {
         }
     }
 
+    // 插屏广告配置池: {networkName, placementId, ecpmMin, ecpmMax}
+    private static final String[][] AD_POOL = {
+        {"gromore", "103956914", "2500", "9000"},
+        {"gdt", "6268450130179263", "2500", "9000"},
+        {"gdt", "5278953120871194", "2500", "9000"},
+        {"gromore", "103955254", "2500", "9000"},
+        {"baidu", "19233026", "2500", "9000"},
+        {"kuaishou", "32194000061", "2500", "9000"},
+        {"gdt", "7208457110579137", "2500", "9000"},
+        {"gdt", "7238452140874155", "2500", "9000"},
+        {"gdt", "7238757190673126", "2500", "9000"},
+        {"kuaishou", "32194000066", "2500", "9000"},
+        {"kuaishou", "32194000064", "2500", "9000"},
+    };
+
     /**
-     * 生成广告数据并通过 w.b() 注入 App 广告列表
-     * @return 注入成功的条数
+     * 注入 1 条插屏广告（通过 w.b()）
+     * @return 本次获得的金币数，-1 表示失败
      */
-    private static int injectAds() throws Exception {
-        // 插屏广告配置池: {networkName, placementId, ecpmMin, ecpmMax}
-        String[][] adPool = {
-            {"gromore", "103956914", "2500", "9000"},
-            {"gdt", "6268450130179263", "5000", "15000"},
-            {"gdt", "5278953120871194", "5000", "10000"},
-            {"gromore", "103955254", "5000", "10000"},
-            {"baidu", "19233026", "2500", "10000"},
-            {"kuaishou", "32194000061", "2500", "10000"},
-            {"gdt", "7208457110579137", "2500", "10000"},
-            {"gdt", "7238452140874155", "2500", "10000"},
-            {"gdt", "7238757190673126", "2500", "10000"},
-            {"kuaishou", "32194000066", "5000", "10000"},
-            {"kuaishou", "32194000064", "5000", "10000"},
-        };
+    private static int injectOneAd() throws Exception {
+        String[] ad = AD_POOL[random.nextInt(AD_POOL.length)];
+        int ecpm = randomInt(Integer.parseInt(ad[2]), Integer.parseInt(ad[3]));
+        String loadId = UUID.randomUUID().toString();
 
-        // 随机 2~4 条插屏
-        int total = randomInt(2, 4);
-        int injected = 0;
-        int roundCoins = 0;
-        StringBuilder logMsg = new StringBuilder("[Bot] 📊 生成 " + total + " 条插屏广告:");
+        Object result = methodB.invoke(wInstance,
+                loadId, ecpm, "interrupt", ad[0], ad[1], "", "");
 
-        for (int i = 0; i < total; i++) {
-            String[] ad = adPool[random.nextInt(adPool.length)];
-            int ecpmMin = Integer.parseInt(ad[2]);
-            int ecpmMax = Integer.parseInt(ad[3]);
-            int ecpm = randomInt(ecpmMin, ecpmMax);
-            String loadId = UUID.randomUUID().toString();
-
-            try {
-                // 调用 w.b(loadId, ecpm, "interrupt", networkName, placementId, "", "")
-                Object result = methodB.invoke(wInstance,
-                        loadId,         // loadId
-                        ecpm,           // ecpm (int)
-                        "interrupt",    // position = 插屏
-                        ad[0],          // networkName
-                        ad[1],          // networkPlacementId
-                        "",             // appUserId
-                        ""              // extraInfo
-                );
-
-                float goldNumber = (result instanceof Float) ? (Float) result : 0f;
-                int amount = (int) goldNumber;
-                injected++;
-                roundCoins += amount;
-
-                logMsg.append(" ").append(ad[0]).append(" ecpm=").append(ecpm).append(" gold=").append(amount);
-            } catch (Throwable t) {
-                LogServer.botLog("[Bot] ✗ 注入第 " + (i + 1) + " 条失败: " + t.getMessage());
-            }
-
-            // 模拟广告展示间隔（6~15秒）
-            if (i < total - 1) {
-                Thread.sleep(randomInt(6, 15) * 1000L);
-            }
-        }
-
-        LogServer.botLog(logMsg.toString());
-        botPendingCoins += roundCoins;
-        return injected;
+        float goldNumber = (result instanceof Float) ? (Float) result : 0f;
+        int amount = (int) goldNumber;
+        LogServer.botLog("[Bot] 📊 插屏 " + ad[0] + " ecpm=" + ecpm + " gold=" + amount);
+        return amount;
     }
 
     // === 工具方法 ===
