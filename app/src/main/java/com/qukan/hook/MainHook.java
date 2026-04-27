@@ -245,21 +245,20 @@ public class MainHook implements IXposedHookLoadPackage {
                         @Override
                         protected void afterHookedMethod(MethodHookParam param) {
                             if (!blockNonRewardAds) return;
-                            final Object interstitialAd = param.thisObject;
-                            final Object adInfo = param.args[0];
                             LogServer.log("[AdAuto] 插屏广告已展示，5 秒后自动关闭");
 
                             h().postDelayed(() -> {
-                                try {
-                                    // 插屏广告是 Dialog/View 叠加，不是独立 Activity
-                                    // 直接调用 onVideoAdClosed 触发完整关闭回调链
-                                    java.lang.reflect.Method closedMethod = interstitialAd.getClass()
-                                            .getMethod("onVideoAdClosed", adInfo.getClass());
-                                    closedMethod.invoke(interstitialAd, adInfo);
-                                    LogServer.log("[AdAuto] ✓ 已调用 onVideoAdClosed 关闭插屏");
-                                } catch (Throwable t) {
-                                    LogServer.log("[AdAuto] 插屏自动关闭异常: " + t.getMessage());
-                                }
+                                // Instrumentation.sendKeyDownUpSync 必须在非主线程调用
+                                new Thread(() -> {
+                                    try {
+                                        // 发送全局 BACK 键事件到当前焦点窗口（即 Dialog）
+                                        new android.app.Instrumentation().sendKeyDownUpSync(
+                                                android.view.KeyEvent.KEYCODE_BACK);
+                                        LogServer.log("[AdAuto] ✓ 已发送全局 BACK 关闭插屏");
+                                    } catch (Throwable t) {
+                                        LogServer.log("[AdAuto] 插屏自动关闭异常: " + t.getMessage());
+                                    }
+                                }, "AdAutoClose").start();
                             }, 5000);
                         }
                     });
