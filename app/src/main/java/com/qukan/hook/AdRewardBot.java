@@ -185,57 +185,66 @@ public class AdRewardBot {
     private static String buildAndEncrypt() throws Exception {
         long nowMs = System.currentTimeMillis();
 
-        // 生成信息流 eCPM
-        int ecpmFeed = randomInt(FEED_ECPM_MIN, FEED_ECPM_MAX);
-        double moneyFeed = ecpmFeed / 10000.0;
+        // 广告配置池（从真实 Hook 数据提取）
+        // 格式: {admodel_id, admodel_value, adplatform_name, adtype_id, adtype_name, network_placement_id, reward_rate, ecpm_min, ecpm_max}
+        String[][] adPool = {
+            {"64", "8983638867376500", "gdt", "64", "信息流广告", "9248159160678469", "0.60", "58", "361"},
+            {"64", "8983638867376500", "kuaishou", "64", "信息流广告", "32194000050", "0.60", "31", "45"},
+            {"65", "5491239561962900", "gdt", "65", "插屏广告", "6268450130179263", "0.60", "1000", "10160"},
+            {"65", "5491239561962900", "gdt", "65", "插屏广告", "5278953120871194", "0.60", "2000", "2000"},
+            {"65", "5491239561962900", "gdt", "65", "插屏广告", "7238757190673126", "0.60", "4000", "4000"},
+            {"65", "5491239561962900", "gdt", "65", "插屏广告", "7238452140874155", "0.60", "3000", "3000"},
+            {"65", "5491239561962900", "gdt", "65", "插屏广告", "2228458100274113", "0.60", "1000", "1000"},
+            {"65", "5491239561962900", "gromore", "65", "插屏广告", "103956914", "0.60", "334", "1627"},
+            {"63", "5169829687932834", "gdt", "63", "Banner广告", "5278357170370989", "0.60", "86", "142"},
+        };
 
-        // 生成插屏 eCPM
-        int ecpmInter = randomInt(INTER_ECPM_MIN, INTER_ECPM_MAX);
-        double moneyInter = ecpmInter / 10000.0;
-        int interAmount = (int) (moneyInter * 10000);
+        // 随机抽取 2~3 条不重复的广告
+        int adCount = random.nextBoolean() ? 2 : 3;
+        adCount = Math.min(adCount, adPool.length);
 
-        LogServer.botLog("[Bot] 📊 参数: 信息流 ecpm=" + ecpmFeed + " 插屏 ecpm=" + ecpmInter);
+        // Fisher-Yates 洗牌取前 adCount 个
+        String[][] shuffled = adPool.clone();
+        for (int i = shuffled.length - 1; i > 0; i--) {
+            int j = random.nextInt(i + 1);
+            String[] temp = shuffled[i];
+            shuffled[i] = shuffled[j];
+            shuffled[j] = temp;
+        }
 
-        // 构建广告详情 JSON 数组
         JSONArray details = new JSONArray();
+        StringBuilder logMsg = new StringBuilder("[Bot] 📊 生成 " + adCount + " 条广告:");
 
-        // 信息流广告
-        JSONObject feed = new JSONObject();
-        feed.put("admodel_id", "64");
-        feed.put("admodel_value", "8983638867376500");
-        feed.put("adplatform_name", "gdt");
-        feed.put("adtype_id", "64");
-        feed.put("adtype_name", "信息流广告");
-        feed.put("amount", "0");
-        feed.put("appUserId", "");
-        feed.put("displayed_at", String.valueOf(nowMs));
-        feed.put("ecpm", String.valueOf(ecpmFeed));
-        feed.put("exchange_rate", "10000");
-        feed.put("extraInfo", "");
-        feed.put("loadId", UUID.randomUUID().toString());
-        feed.put("network_placement_id", "9248159160678469");
-        feed.put("real_money", String.format("%.10f", moneyFeed));
-        feed.put("reward_rate", "0.60");
-        details.put(feed);
+        for (int i = 0; i < adCount; i++) {
+            String[] ad = shuffled[i];
+            int ecpmMin = Integer.parseInt(ad[7]);
+            int ecpmMax = Integer.parseInt(ad[8]);
+            int ecpm = randomInt(ecpmMin, ecpmMax);
+            double money = ecpm / 10000.0;
+            double rewardRate = Double.parseDouble(ad[6]);
+            int amount = (int) (money * rewardRate * 10000);
 
-        // 插屏广告
-        JSONObject inter = new JSONObject();
-        inter.put("admodel_id", "65");
-        inter.put("admodel_value", "5491239561962900");
-        inter.put("adplatform_name", "kuaishou");
-        inter.put("adtype_id", "65");
-        inter.put("adtype_name", "插屏广告");
-        inter.put("amount", String.valueOf(interAmount));
-        inter.put("appUserId", "");
-        inter.put("displayed_at", String.valueOf(nowMs + randomInt(300, 800)));
-        inter.put("ecpm", String.valueOf(ecpmInter));
-        inter.put("exchange_rate", "10000");
-        inter.put("extraInfo", "");
-        inter.put("loadId", UUID.randomUUID().toString());
-        inter.put("network_placement_id", "32194000066");
-        inter.put("real_money", String.format("%.10f", moneyInter));
-        inter.put("reward_rate", "0.60");
-        details.put(inter);
+            JSONObject item = new JSONObject();
+            item.put("admodel_id", ad[0]);
+            item.put("admodel_value", ad[1]);
+            item.put("adplatform_name", ad[2]);
+            item.put("adtype_id", ad[3]);
+            item.put("adtype_name", ad[4]);
+            item.put("amount", String.valueOf(amount));
+            item.put("appUserId", "");
+            item.put("displayed_at", String.valueOf(nowMs + i * randomInt(5000, 15000)));
+            item.put("ecpm", String.valueOf(ecpm));
+            item.put("exchange_rate", "10000");
+            item.put("extraInfo", "");
+            item.put("loadId", UUID.randomUUID().toString());
+            item.put("network_placement_id", ad[5]);
+            item.put("real_money", money >= 0.001 ? String.format("%.10f", money) : String.format("%.1E", money));
+            item.put("reward_rate", ad[6]);
+            details.put(item);
+
+            logMsg.append(" ").append(ad[4]).append("(").append(ad[2]).append(") ecpm=").append(ecpm);
+        }
+        LogServer.botLog(logMsg.toString());
 
         // 签名
         long timestamp = System.currentTimeMillis() / 1000;
