@@ -245,35 +245,24 @@ public class MainHook implements IXposedHookLoadPackage {
                         @Override
                         protected void afterHookedMethod(MethodHookParam param) {
                             if (!blockNonRewardAds) return;
-                            final Object interstitialAd = param.thisObject;
-
-                            // 直接从 WMInterstitialAd 实例获取 Activity 引用
-                            Activity adActivity = null;
-                            try {
-                                java.lang.ref.WeakReference<?> ref = (java.lang.ref.WeakReference<?>)
-                                        XposedHelpers.getObjectField(interstitialAd, "activityWeakReference");
-                                if (ref != null) adActivity = (Activity) ref.get();
-                            } catch (Throwable ignored) {}
-
-                            // 如果拿不到，尝试遍历 ActivityThread
-                            if (adActivity == null) adActivity = findTopAdActivity();
-
-                            final Activity targetActivity = adActivity;
-                            String actName = targetActivity != null ? targetActivity.getClass().getSimpleName() : "null";
-                            LogServer.log("[AdAuto] 插屏广告已展示 (" + actName + ")，5 秒后模拟返回关闭");
+                            LogServer.log("[AdAuto] 插屏广告已展示，5 秒后自动关闭");
 
                             h().postDelayed(() -> {
                                 try {
-                                    if (targetActivity != null && !targetActivity.isFinishing()) {
-                                        targetActivity.dispatchKeyEvent(new android.view.KeyEvent(
+                                    // 实时查找当前顶层非 App 的 Activity（即广告 Activity）
+                                    Activity adAct = findForegroundNonAppActivity();
+                                    if (adAct != null && !adAct.isFinishing()) {
+                                        String name = adAct.getClass().getName();
+                                        LogServer.log("[AdAuto] 找到广告 Activity: " + name);
+                                        // 模拟 BACK 键
+                                        adAct.dispatchKeyEvent(new android.view.KeyEvent(
                                                 android.view.KeyEvent.ACTION_DOWN, android.view.KeyEvent.KEYCODE_BACK));
-                                        targetActivity.dispatchKeyEvent(new android.view.KeyEvent(
+                                        adAct.dispatchKeyEvent(new android.view.KeyEvent(
                                                 android.view.KeyEvent.ACTION_UP, android.view.KeyEvent.KEYCODE_BACK));
-                                        LogServer.log("[AdAuto] ✓ 已模拟返回键关闭: " + targetActivity.getClass().getSimpleName());
+                                        LogServer.log("[AdAuto] ✓ 已模拟返回键关闭");
                                     } else {
-                                        // 最终兜底：直接 finish 所有广告 Activity
+                                        LogServer.log("[AdAuto] ⚠ 未找到广告 Activity，尝试 finish 兜底");
                                         closeAdActivities();
-                                        LogServer.log("[AdAuto] ⚠ Activity 已销毁，使用 finish 兜底");
                                     }
                                 } catch (Throwable t) {
                                     LogServer.log("[AdAuto] 插屏自动关闭异常: " + t.getMessage());
@@ -582,6 +571,38 @@ public class MainHook implements IXposedHookLoadPackage {
         } catch (Throwable t) {
             LogServer.log("[Hook] hookWMRewardAdShow FAIL: " + t.getMessage());
             XposedBridge.log("QukanHook [Hook] hookWMRewardAdShow FAIL: " + t);
+        }
+    }
+
+    /**
+     * 查找当前最顶层的非 App Activity（即广告 Activity）
+     * 排除 App 自身的 Activity，返回最后一个（最顶层）
+     */
+    private Activity findForegroundNonAppActivity() {
+        try {
+            Object activityThread = XposedHelpers.callStaticMethod(
+                    XposedHelpers.findClass("android.app.ActivityThread", null),
+                    "currentActivityThread");
+            java.util.Map<?, ?> activities = (java.util.Map<?, ?>)
+                    XposedHelpers.getObjectField(activityThread, "mActivities");
+            if (activities == null) return null;
+
+            Activity candidate = null;
+            StringBuilder debugList = new StringBuilder("[AdAuto] 当前 Activity 列表:");
+            for (Object record : activities.values()) {
+                Activity act = (Activity) XposedHelpers.getObjectField(record, "activity");
+                if (act == null || act.isFinishing()) continue;
+                String name = act.getClass().getName();
+                debugList.append(" [").append(name).append("]");
+                // 排除 App 自身的 Activity
+                if (!name.startsWith("com.example.advertisinglibrary")) {
+                    candidate = act;
+                }
+            }
+            LogServer.log(debugList.toString());
+            return candidate;
+        } catch (Throwable t) {
+            return null;
         }
     }
 
