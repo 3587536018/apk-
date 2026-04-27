@@ -93,7 +93,7 @@ public class AdRewardBot {
                                     String trigResult = cb.trigger();
                                     LogServer.botLog("[Bot] 💰 刷币结果: " + trigResult);
                                     // 刷币成功才计入真实收益
-                                    flushOk = trigResult != null && trigResult.contains("成功");
+                                    flushOk = trigResult != null && (trigResult.contains("Triggered") || trigResult.contains("成功"));
                                 } else {
                                     LogServer.botLog("[Bot] ⚠ 刷币回调未就绪，跳过");
                                 }
