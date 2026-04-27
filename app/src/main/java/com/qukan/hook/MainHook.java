@@ -294,6 +294,46 @@ public class MainHook implements IXposedHookLoadPackage {
 
         LogServer.log("[AdAuto] ★ 广告自动关闭初始化完成，共注册 " + hooked + " 个 Hook");
         XposedBridge.log("QukanHook [AdAuto] Registered " + hooked + " auto-close hooks");
+
+        // 启动定时轮询：每 10 秒检测是否有插屏广告残留，尝试关闭
+        startAdClosePolling();
+    }
+
+    /**
+     * 定时轮询：每 10 秒检测屏幕上是否存在广告 Dialog 窗口，尝试点击关闭
+     */
+    private void startAdClosePolling() {
+        final Runnable pollRunnable = new Runnable() {
+            @Override
+            public void run() {
+                if (!blockNonRewardAds) {
+                    h().postDelayed(this, 10000);
+                    return;
+                }
+                try {
+                    // 检测是否有多余窗口（正常只有 Activity 窗口，多出来的就是 Dialog）
+                    Class<?> wmgCls = Class.forName("android.view.WindowManagerGlobal");
+                    Object wmg = wmgCls.getMethod("getInstance").invoke(null);
+                    java.lang.reflect.Field viewsField = wmgCls.getDeclaredField("mViews");
+                    viewsField.setAccessible(true);
+                    @SuppressWarnings("unchecked")
+                    java.util.ArrayList<android.view.View> rootViews =
+                            (java.util.ArrayList<android.view.View>) viewsField.get(wmg);
+
+                    if (rootViews != null && rootViews.size() > 1) {
+                        // 有多余窗口，尝试找关闭按钮
+                        boolean closed = clickAdCloseButton();
+                        if (closed) {
+                            LogServer.log("[AdPoll] ✓ 轮询检测到广告并已关闭");
+                        }
+                    }
+                } catch (Throwable ignored) {}
+                h().postDelayed(this, 10000);
+            }
+        };
+        // 延迟 15 秒后开始轮询（等 App 完全启动）
+        h().postDelayed(pollRunnable, 15000);
+        LogServer.log("[AdPoll] 定时轮询已启动（每 10 秒检测）");
     }
 
     // ======================================================================
