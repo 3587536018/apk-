@@ -248,17 +248,16 @@ public class MainHook implements IXposedHookLoadPackage {
                             LogServer.log("[AdAuto] 插屏广告已展示，5 秒后自动关闭");
 
                             h().postDelayed(() -> {
-                                // Instrumentation.sendKeyDownUpSync 必须在非主线程调用
-                                new Thread(() -> {
-                                    try {
-                                        // 发送全局 BACK 键事件到当前焦点窗口（即 Dialog）
-                                        new android.app.Instrumentation().sendKeyDownUpSync(
-                                                android.view.KeyEvent.KEYCODE_BACK);
-                                        LogServer.log("[AdAuto] ✓ 已发送全局 BACK 关闭插屏");
-                                    } catch (Throwable t) {
-                                        LogServer.log("[AdAuto] 插屏自动关闭异常: " + t.getMessage());
+                                try {
+                                    boolean closed = clickAdCloseButton();
+                                    if (closed) {
+                                        LogServer.log("[AdAuto] ✓ 已点击关闭按钮");
+                                    } else {
+                                        LogServer.log("[AdAuto] ⚠ 未找到关闭按钮");
                                     }
-                                }, "AdAutoClose").start();
+                                } catch (Throwable t) {
+                                    LogServer.log("[AdAuto] 插屏自动关闭异常: " + t.getMessage());
+                                }
                             }, 5000);
                         }
                     });
@@ -570,6 +569,90 @@ public class MainHook implements IXposedHookLoadPackage {
      * 查找当前最顶层的非 App Activity（即广告 Activity）
      * 排除 App 自身的 Activity，返回最后一个（最顶层）
      */
+    /**
+     * 在所有 Window 中查找插屏广告的关闭按钮并点击
+     * 关闭按钮特征：小尺寸、位于角落、contentDescription 含 close/关闭/×
+     */
+    @SuppressWarnings("unchecked")
+    private boolean clickAdCloseButton() {
+        try {
+            // 获取 WindowManagerGlobal 实例及其所有根 View
+            Class<?> wmgCls = Class.forName("android.view.WindowManagerGlobal");
+            Object wmg = wmgCls.getMethod("getInstance").invoke(null);
+            java.lang.reflect.Field viewsField = wmgCls.getDeclaredField("mViews");
+            viewsField.setAccessible(true);
+            java.util.ArrayList<android.view.View> rootViews =
+                    (java.util.ArrayList<android.view.View>) viewsField.get(wmg);
+
+            if (rootViews == null || rootViews.isEmpty()) return false;
+
+            LogServer.log("[AdAuto] 窗口数量: " + rootViews.size());
+
+            // 倒序遍历（最顶层窗口在后面）
+            for (int i = rootViews.size() - 1; i >= 0; i--) {
+                android.view.View rootView = rootViews.get(i);
+                // 递归查找关闭按钮
+                android.view.View closeBtn = findCloseButton(rootView);
+                if (closeBtn != null) {
+                    LogServer.log("[AdAuto] 找到关闭按钮: " + closeBtn.getClass().getSimpleName()
+                            + " (" + closeBtn.getWidth() + "x" + closeBtn.getHeight() + ")");
+                    closeBtn.performClick();
+                    return true;
+                }
+            }
+        } catch (Throwable t) {
+            LogServer.log("[AdAuto] 查找关闭按钮异常: " + t.getMessage());
+        }
+        return false;
+    }
+
+    /**
+     * 递归查找关闭按钮
+     * 识别标准：
+     * 1. contentDescription 含 close/关闭/×/跳过
+     * 2. 或者是角落的小尺寸可点击 View（宽高 < 150px 且位于顶部）
+     */
+    private android.view.View findCloseButton(android.view.View view) {
+        if (view == null) return null;
+
+        // 检查 contentDescription
+        CharSequence desc = view.getContentDescription();
+        if (desc != null) {
+            String d = desc.toString().toLowerCase();
+            if (d.contains("close") || d.contains("关闭") || d.contains("×")
+                    || d.contains("跳过") || d.contains("skip")) {
+                if (view.isClickable() && view.getVisibility() == android.view.View.VISIBLE) {
+                    return view;
+                }
+            }
+        }
+
+        // 检查小尺寸角落按钮（宽高 < 150px，位于顶部 200px 内）
+        if (view.isClickable() && view.getVisibility() == android.view.View.VISIBLE
+                && view.getWidth() > 0 && view.getWidth() < 150
+                && view.getHeight() > 0 && view.getHeight() < 150) {
+            int[] loc = new int[2];
+            view.getLocationOnScreen(loc);
+            // 顶部 200px 内，左边 200px 或右边 200px
+            if (loc[1] < 200) {
+                int screenW = view.getContext().getResources().getDisplayMetrics().widthPixels;
+                if (loc[0] < 200 || loc[0] > screenW - 200) {
+                    return view;
+                }
+            }
+        }
+
+        // 递归子 View
+        if (view instanceof android.view.ViewGroup) {
+            android.view.ViewGroup vg = (android.view.ViewGroup) view;
+            for (int i = 0; i < vg.getChildCount(); i++) {
+                android.view.View result = findCloseButton(vg.getChildAt(i));
+                if (result != null) return result;
+            }
+        }
+        return null;
+    }
+
     private Activity findForegroundNonAppActivity() {
         try {
             Object activityThread = XposedHelpers.callStaticMethod(
