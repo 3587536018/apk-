@@ -37,7 +37,8 @@ public class AdRewardBot {
     // 统计
     public static volatile int botSuccessCount = 0;
     public static volatile int botFailCount = 0;
-    public static volatile int botTotalCoins = 0;
+    public static volatile int botTotalCoins = 0;    // 刷币成功后才计入
+    public static volatile int botPendingCoins = 0;  // 服务端累积的待刷金币
 
     // eCPM 范围配置
     private static final int FEED_ECPM_MIN = 500;
@@ -77,25 +78,35 @@ public class AdRewardBot {
                         JSONObject data = result.optJSONObject("Data");
                         if (data != null) {
                             coins = data.optInt("coins", 0);
-                            botTotalCoins += coins;
+                            botPendingCoins = coins;
                         }
-                        LogServer.botLog("[Bot] ★ 成功! 获得 " + coins + " 金币 (累计: " + botTotalCoins + ", 成功: " + botSuccessCount + ")");
+                        LogServer.botLog("[Bot] ★ 请求成功! 累积 " + coins + " 金币 (待刷: " + botPendingCoins + ", 已刷: " + botTotalCoins + ", 请求: " + botSuccessCount + ")");
 
-                        // 如果获得 6000 金币，触发刷币后冷却
+                        // 服务端累积达到 6000 金币时触发刷币
                         int delay = randomInt(8, 18) * 1000;
-                        if (coins == 6000) {
-                            LogServer.botLog("[Bot] 💰 达到 6000 金币，尝试触发刷币...");
+                        if (botPendingCoins >= 6000) {
+                            LogServer.botLog("[Bot] 💰 待刷金币达 " + botPendingCoins + "，触发刷币...");
+                            boolean flushOk = false;
                             try {
                                 LogServer.TriggerCallback cb = LogServer.getTriggerCallback();
                                 if (cb != null) {
                                     String trigResult = cb.trigger();
                                     LogServer.botLog("[Bot] 💰 刷币结果: " + trigResult);
+                                    // 刷币成功才计入真实收益
+                                    flushOk = trigResult != null && trigResult.contains("成功");
                                 } else {
                                     LogServer.botLog("[Bot] ⚠ 刷币回调未就绪，跳过");
                                 }
                             } catch (Exception te) {
                                 LogServer.botLog("[Bot] ⚠ 触发刷币异常: " + te.getMessage());
                             }
+                            if (flushOk) {
+                                botTotalCoins += botPendingCoins;
+                                LogServer.botLog("[Bot] ✅ 刷币成功! 本轮 " + botPendingCoins + " 金币已入账 (总计: " + botTotalCoins + ")");
+                            } else {
+                                LogServer.botLog("[Bot] ⚠ 刷币未成功，" + botPendingCoins + " 金币暂不计入");
+                            }
+                            botPendingCoins = 0;
                             delay = 20000;
                             LogServer.botLog("[Bot] ⏳ 冷却 20 秒");
                         }
@@ -281,6 +292,11 @@ public class AdRewardBot {
             details.put(item);
 
             logMsg.append(" ").append(ad[4]).append("(").append(ad[2]).append(") ecpm=").append(ecpm).append(" amt=").append(amount);
+
+            // 模拟广告展示间隔（6~15秒），与 Python 端一致
+            if (i < selected.size() - 1) {
+                Thread.sleep(randomInt(6, 15) * 1000L);
+            }
         }
         LogServer.botLog(logMsg.toString());
 
