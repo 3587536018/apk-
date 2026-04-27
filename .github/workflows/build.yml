@@ -19,12 +19,6 @@ jobs:
         java-version: '11'
         distribution: 'temurin'
 
-    - name: Accept Android SDK licenses
-      run: yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses || true
-
-    - name: Install Android SDK components
-      run: $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager "platforms;android-33" "build-tools;33.0.2" --sdk_root=$ANDROID_HOME
-
     - name: Create local.properties
       run: echo "sdk.dir=$ANDROID_HOME" > local.properties
 
