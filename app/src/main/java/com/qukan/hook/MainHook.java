@@ -238,7 +238,37 @@ public class MainHook implements IXposedHookLoadPackage {
             Class<?> interstitialCls = XposedHelpers.findClass("com.windmill.sdk.interstitial.WMInterstitialAd", cl);
             Class<?> adInfoCls = XposedHelpers.findClass("com.windmill.sdk.models.AdInfo", cl);
 
-            // Hook onVideoAdPlayStart：插屏开始展示后延迟几秒自动关闭
+            // Hook show()：百度插屏直接禁止展示
+            XposedHelpers.findAndHookMethod(interstitialCls, "show",
+                    Activity.class, java.util.HashMap.class,
+                    new XC_MethodHook() {
+                        @Override
+                        protected void beforeHookedMethod(MethodHookParam param) {
+                            if (!blockNonRewardAds) return;
+                            try {
+                                // 通过 controller 获取当前加载的广告 networkName
+                                Object controller = XposedHelpers.getObjectField(param.thisObject, "controller");
+                                if (controller == null) return;
+                                // 尝试获取当前广告源的 networkName
+                                String networkName = "";
+                                try {
+                                    Object adSource = XposedHelpers.callMethod(controller, "m69124h");
+                                    if (adSource != null) {
+                                        networkName = (String) XposedHelpers.callMethod(adSource, "m69407aH");
+                                    }
+                                } catch (Throwable ignored) {}
+
+                                if ("baidu".equalsIgnoreCase(networkName)) {
+                                    LogServer.log("[AdAuto] ⛔ 百度插屏被拦截，禁止展示");
+                                    param.setResult(false); // 阻止 show() 执行
+                                }
+                            } catch (Throwable t) {
+                                LogServer.log("[AdAuto] show拦截异常: " + t.getMessage());
+                            }
+                        }
+                    });
+
+            // Hook onVideoAdPlayStart：插屏展示后延迟自动关闭
             XposedHelpers.findAndHookMethod(interstitialCls, "onVideoAdPlayStart",
                     adInfoCls, boolean.class,
                     new XC_MethodHook() {
@@ -247,7 +277,6 @@ public class MainHook implements IXposedHookLoadPackage {
                             if (!blockNonRewardAds) return;
                             Object adInfo = param.args[0];
 
-                            // 获取广告网络名称
                             String networkName = "";
                             try {
                                 networkName = (String) XposedHelpers.callMethod(adInfo, "getNetworkName");
@@ -255,14 +284,13 @@ public class MainHook implements IXposedHookLoadPackage {
 
                             LogServer.log("[AdAuto] 插屏广告展示 network=" + networkName);
 
-                            // 百度广告立即拦截关闭
+                            // 百度如果漏过 show 拦截，立即关闭
                             if ("baidu".equalsIgnoreCase(networkName)) {
-                                LogServer.log("[AdAuto] ⛔ 百度插屏，立即关闭");
+                                LogServer.log("[AdAuto] ⛔ 百度插屏漏过，立即关闭");
                                 h().postDelayed(() -> {
                                     try {
                                         boolean closed = clickAdCloseButton();
                                         if (!closed) closeAdActivities();
-                                        LogServer.log("[AdAuto] ✓ 百度插屏已处理");
                                     } catch (Throwable ignored) {}
                                 }, 500);
                                 return;
