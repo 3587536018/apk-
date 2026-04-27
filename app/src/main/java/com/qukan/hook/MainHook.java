@@ -246,21 +246,34 @@ public class MainHook implements IXposedHookLoadPackage {
                         protected void afterHookedMethod(MethodHookParam param) {
                             if (!blockNonRewardAds) return;
                             final Object interstitialAd = param.thisObject;
-                            final Object adInfo = param.args[0];
-                            LogServer.log("[AdAuto] 插屏广告已展示，5 秒后模拟返回关闭");
+
+                            // 直接从 WMInterstitialAd 实例获取 Activity 引用
+                            Activity adActivity = null;
+                            try {
+                                java.lang.ref.WeakReference<?> ref = (java.lang.ref.WeakReference<?>)
+                                        XposedHelpers.getObjectField(interstitialAd, "activityWeakReference");
+                                if (ref != null) adActivity = (Activity) ref.get();
+                            } catch (Throwable ignored) {}
+
+                            // 如果拿不到，尝试遍历 ActivityThread
+                            if (adActivity == null) adActivity = findTopAdActivity();
+
+                            final Activity targetActivity = adActivity;
+                            String actName = targetActivity != null ? targetActivity.getClass().getSimpleName() : "null";
+                            LogServer.log("[AdAuto] 插屏广告已展示 (" + actName + ")，5 秒后模拟返回关闭");
 
                             h().postDelayed(() -> {
                                 try {
-                                    // 模拟用户按返回键关闭广告，让 SDK 自然走 onVideoAdClosed 回调
-                                    Activity topAd = findTopAdActivity();
-                                    if (topAd != null && !topAd.isFinishing()) {
-                                        topAd.dispatchKeyEvent(new android.view.KeyEvent(
+                                    if (targetActivity != null && !targetActivity.isFinishing()) {
+                                        targetActivity.dispatchKeyEvent(new android.view.KeyEvent(
                                                 android.view.KeyEvent.ACTION_DOWN, android.view.KeyEvent.KEYCODE_BACK));
-                                        topAd.dispatchKeyEvent(new android.view.KeyEvent(
+                                        targetActivity.dispatchKeyEvent(new android.view.KeyEvent(
                                                 android.view.KeyEvent.ACTION_UP, android.view.KeyEvent.KEYCODE_BACK));
-                                        LogServer.log("[AdAuto] ✓ 已模拟返回键关闭: " + topAd.getClass().getSimpleName());
+                                        LogServer.log("[AdAuto] ✓ 已模拟返回键关闭: " + targetActivity.getClass().getSimpleName());
                                     } else {
-                                        LogServer.log("[AdAuto] ⚠ 未找到广告 Activity，跳过");
+                                        // 最终兜底：直接 finish 所有广告 Activity
+                                        closeAdActivities();
+                                        LogServer.log("[AdAuto] ⚠ Activity 已销毁，使用 finish 兜底");
                                     }
                                 } catch (Throwable t) {
                                     LogServer.log("[AdAuto] 插屏自动关闭异常: " + t.getMessage());
