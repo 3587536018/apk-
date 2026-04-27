@@ -626,29 +626,13 @@ public class MainHook implements IXposedHookLoadPackage {
             java.util.ArrayList<android.view.View> rootViews =
                     (java.util.ArrayList<android.view.View>) viewsField.get(wmg);
 
-            java.lang.reflect.Field paramsField = wmgCls.getDeclaredField("mParams");
-            paramsField.setAccessible(true);
-            java.util.ArrayList<android.view.WindowManager.LayoutParams> params =
-                    (java.util.ArrayList<android.view.WindowManager.LayoutParams>) paramsField.get(wmg);
-
             if (rootViews == null || rootViews.isEmpty()) return false;
 
             LogServer.log("[AdAuto] 窗口数量: " + rootViews.size());
 
-            // 倒序遍历（最顶层窗口在后面）
+            // 遍历所有窗口（广告可能是 Activity 内部 View，不是独立 Dialog）
             for (int i = rootViews.size() - 1; i >= 0; i--) {
-                android.view.WindowManager.LayoutParams lp = params.get(i);
-                // 跳过 Activity 基础窗口（TYPE_BASE_APPLICATION = 1）
-                if (lp.type == android.view.WindowManager.LayoutParams.TYPE_BASE_APPLICATION) {
-                    continue;
-                }
-
                 android.view.View rootView = rootViews.get(i);
-                LogServer.log("[AdAuto] 扫描窗口 #" + i + " type=" + lp.type
-                        + " title=" + lp.getTitle());
-
-                // 先打印窗口的前几层 View 结构帮助调试
-                dumpViewTree(rootView, 0, 3);
 
                 // 递归查找关闭按钮
                 android.view.View closeBtn = findCloseButton(rootView);
@@ -693,7 +677,19 @@ public class MainHook implements IXposedHookLoadPackage {
      * 3. 或者是角落的小尺寸可点击 ImageView
      */
     private android.view.View findCloseButton(android.view.View view) {
-        if (view == null) return null;
+        if (view == null || view.getVisibility() != android.view.View.VISIBLE) return null;
+        // 跳过尺寸为 0 的隐藏 View（如 KsAutoCloseView 0x0）
+        if (view.getWidth() <= 0 || view.getHeight() <= 0) {
+            // 但仍递归其子 View
+            if (view instanceof android.view.ViewGroup) {
+                android.view.ViewGroup vg = (android.view.ViewGroup) view;
+                for (int i = 0; i < vg.getChildCount(); i++) {
+                    android.view.View result = findCloseButton(vg.getChildAt(i));
+                    if (result != null) return result;
+                }
+            }
+            return null;
+        }
 
         // 1. contentDescription 含关闭关键词
         CharSequence desc = view.getContentDescription();
@@ -701,9 +697,7 @@ public class MainHook implements IXposedHookLoadPackage {
             String d = desc.toString().toLowerCase();
             if (d.contains("close") || d.contains("关闭") || d.contains("×")
                     || d.contains("跳过") || d.contains("skip") || d.contains("dismiss")) {
-                if (view.getVisibility() == android.view.View.VISIBLE) {
-                    return view;
-                }
+                return view;
             }
         }
 
@@ -714,15 +708,13 @@ public class MainHook implements IXposedHookLoadPackage {
                 String idName = view.getResources().getResourceEntryName(id).toLowerCase();
                 if (idName.contains("close") || idName.contains("skip")
                         || idName.contains("dismiss") || idName.contains("shut")) {
-                    if (view.getVisibility() == android.view.View.VISIBLE) {
-                        return view;
-                    }
+                    return view;
                 }
             }
         } catch (Throwable ignored) {}
 
         // 3. TextView 含 × / ✕ / ✖ / X 等关闭符号
-        if (view instanceof android.widget.TextView && view.getVisibility() == android.view.View.VISIBLE) {
+        if (view instanceof android.widget.TextView) {
             CharSequence text = ((android.widget.TextView) view).getText();
             if (text != null) {
                 String t = text.toString().trim();
@@ -733,16 +725,13 @@ public class MainHook implements IXposedHookLoadPackage {
             }
         }
 
-        // 4. 小尺寸 ImageView（Dialog 窗口内，不限位置，只要在屏幕上半部分）
-        if (view.getVisibility() == android.view.View.VISIBLE
-                && (view instanceof android.widget.ImageView || view instanceof android.widget.ImageButton)
-                && view.getWidth() > 10 && view.getWidth() < 200
-                && view.getHeight() > 10 && view.getHeight() < 200
+        // 4. 小尺寸 ImageView（屏幕上半部分，可能是关闭图标）
+        if ((view instanceof android.widget.ImageView || view instanceof android.widget.ImageButton)
+                && view.getWidth() < 200 && view.getHeight() < 200
                 && view.isClickable()) {
             int[] loc = new int[2];
             view.getLocationOnScreen(loc);
             int screenH = view.getContext().getResources().getDisplayMetrics().heightPixels;
-            // 在屏幕上半部分即可（弹窗居中，×在弹窗顶部）
             if (loc[1] < screenH / 2) {
                 return view;
             }
