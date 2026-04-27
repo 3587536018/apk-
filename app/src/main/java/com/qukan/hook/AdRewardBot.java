@@ -241,11 +241,9 @@ public class AdRewardBot {
             String[] ad = selected[i];
             int ecpmMin = Integer.parseInt(ad[6]);
             int ecpmMax = Integer.parseInt(ad[7]);
-            int amountMin = Integer.parseInt(ad[8]);
-            int amountMax = Integer.parseInt(ad[9]);
             int ecpm = randomInt(ecpmMin, ecpmMax);
-            double money = ecpm / 10000.0;
-            int amount = randomInt(amountMin, amountMax);
+            double realMoney = ecpm / 100000.0;  // 真实公式：ecpm / 100000
+            int amount = (int) (realMoney * 0.60 * 10000);  // amount = real_money * reward_rate * exchange_rate
 
             JSONObject item = new JSONObject();
             item.put("admodel_id", ad[0]);
@@ -261,7 +259,7 @@ public class AdRewardBot {
             item.put("extraInfo", "");
             item.put("loadId", UUID.randomUUID().toString());
             item.put("network_placement_id", ad[5]);
-            item.put("real_money", money >= 0.001 ? String.format("%.10f", money) : String.format("%.1E", money));
+            item.put("real_money", realMoney >= 0.001 ? String.format("%.10f", realMoney) : String.format("%.1E", realMoney));
             item.put("reward_rate", "0.60");
             details.put(item);
 
