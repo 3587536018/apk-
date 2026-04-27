@@ -168,6 +168,10 @@ public class QrLoginHandler {
             ".fail{background:rgba(239,68,68,.08);border:1px solid rgba(239,68,68,.3);color:#fca5a5}" +
             ".mono{font-family:'JetBrains Mono',monospace;font-size:11px;word-break:break-all;" +
             "background:rgba(0,0,0,.3);padding:8px;border-radius:8px;margin-top:10px;max-height:80px;overflow-y:auto}" +
+            ".copy-btn{display:inline-block;margin-top:8px;padding:5px 14px;border-radius:6px;font-size:11px;font-weight:600;" +
+            "cursor:pointer;border:1px solid var(--accent);background:rgba(99,102,241,.1);color:var(--accent2);transition:all .2s}" +
+            ".copy-btn:hover{background:var(--accent);color:#fff}" +
+            ".copy-btn.done{background:var(--green);border-color:var(--green);color:#fff}" +
 
             "a.back{display:flex;align-items:center;justify-content:center;gap:6px;margin-top:20px;color:var(--text2);" +
             "font-size:13px;text-decoration:none;padding:10px;border-radius:8px;transition:all .2s}" +
@@ -181,7 +185,8 @@ public class QrLoginHandler {
             "<button id='btn' onclick='getQr()'>获取二维码</button>" +
 
             "<div class='qr' id='qr'><img id='qrimg'><br><span class='badge' id='badge'>等待扫码</span></div>" +
-            "<div class='result' id='res'><div id='restxt'></div><div class='mono' id='resmono'></div></div>" +
+            "<div class='result' id='res'><div id='restxt'></div><div class='mono' id='resmono'></div>" +
+            "<button class='copy-btn' id='cpbtn' onclick='copyToken()' style='display:none'>📋 复制 Token</button></div>" +
             "<a class='back' href='/'>← 返回控制台</a>" +
             "</div>" +
 
@@ -212,6 +217,7 @@ public class QrLoginHandler {
             "      var r=document.getElementById('res');r.style.display='block';r.className='result ok';" +
             "      document.getElementById('restxt').innerHTML='✅ 登录成功！凭证已自动注入';" +
             "      document.getElementById('resmono').textContent='Token: '+d.token;" +
+            "      document.getElementById('cpbtn').style.display='inline-block';document.getElementById('cpbtn').setAttribute('data-token',d.token);" +
             "      document.getElementById('btn').textContent='重新获取';document.getElementById('btn').disabled=false;return;" +
             "    }else if(d.status==='login_failed'){" +
             "      polling=false;document.getElementById('qr').style.display='none';" +
@@ -225,6 +231,11 @@ public class QrLoginHandler {
             "    if(polling)setTimeout(poll,1200);" +
             "  }).catch(()=>{if(polling)setTimeout(poll,2000);});" +
             "}" +
+            "function copyToken(){var b=document.getElementById('cpbtn'),t=b.getAttribute('data-token');if(!t)return;" +
+            "navigator.clipboard.writeText(t).then(()=>{b.classList.add('done');b.textContent='✓ 已复制';" +
+            "setTimeout(()=>{b.classList.remove('done');b.textContent='📋 复制 Token';},2000);" +
+            "}).catch(()=>{var a=document.createElement('textarea');a.value=t;document.body.appendChild(a);a.select();document.execCommand('copy');document.body.removeChild(a);" +
+            "b.classList.add('done');b.textContent='✓ 已复制';setTimeout(()=>{b.classList.remove('done');b.textContent='📋 复制 Token';},2000);});}" +
             "</script></body></html>";
     }
 

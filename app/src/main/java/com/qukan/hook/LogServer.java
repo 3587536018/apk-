@@ -333,6 +333,12 @@ public class LogServer {
             "textarea.inp{height:60px;resize:vertical}" +
             ".cred-info{font-size:11px;color:var(--text2);margin-top:10px;padding:10px;background:var(--bg);border-radius:8px;border:1px solid var(--border);word-break:break-all}" +
             ".cred-info b{color:var(--accent2)}" +
+            ".cred-row{display:flex;align-items:center;gap:6px;margin-top:4px}" +
+            ".cred-row:first-child{margin-top:0}" +
+            ".cred-val{flex:1;word-break:break-all}" +
+            ".btn-copy{flex-shrink:0;padding:3px 10px;font-size:10px;border-radius:6px;cursor:pointer;border:1px solid var(--border2);background:var(--card2);color:var(--text2);font-family:inherit;transition:all .2s}" +
+            ".btn-copy:hover{background:var(--accent);color:#fff;border-color:var(--accent)}" +
+            ".btn-copy.copied{background:var(--green);color:#fff;border-color:var(--green)}" +
 
             // 开关行
             ".toggles{display:flex;gap:8px;margin:12px 16px;flex-wrap:wrap}" +
@@ -405,8 +411,10 @@ public class LogServer {
             "<textarea class='inp' id='inp_user_json' placeholder='完整 USER_LOGIN_ENTITY JSON'></textarea>" +
             "<div style='margin-top:10px'><button class='btn btn-green' onclick='setCreds()'>💾 注入并持久化</button></div>" +
             "<div class='cred-info'>" +
-            "<div><b>OAID:</b> " + escHtml(MainHook.customOaid != null ? MainHook.customOaid : "未设置") + "</div>" +
-            "<div style='margin-top:4px'><b>Token:</b> " + escHtml(MainHook.customToken != null ? MainHook.customToken : "未设置") + "</div>" +
+            "<div class='cred-row'><div class='cred-val'><b>OAID:</b> <span id='v_oaid'>" + escHtml(MainHook.customOaid != null ? MainHook.customOaid : "未设置") + "</span></div>" +
+            "<button class='btn-copy' onclick=\"copyText('v_oaid',this)\">📋 复制</button></div>" +
+            "<div class='cred-row'><div class='cred-val'><b>Token:</b> <span id='v_token'>" + escHtml(MainHook.customToken != null ? MainHook.customToken : "未设置") + "</span></div>" +
+            "<button class='btn-copy' onclick=\"copyText('v_token',this)\">📋 复制</button></div>" +
             "</div></div>" +
 
             buildWithdrawSection() +
@@ -428,6 +436,11 @@ public class LogServer {
             "if(d.skipAdEnabled){s.className='t-status t-on';s.textContent='✓ 已开启';}else{s.className='t-status t-off';s.textContent='✗ 已关闭';}});}" +
             "function toggleBlock(){fetch('/toggle_blockads').then(r=>r.json()).then(d=>{var s=document.getElementById('ts_block');" +
             "if(d.blockNonRewardAds){s.className='t-status t-on';s.textContent='✓ 拦截中';}else{s.className='t-status t-off';s.textContent='✗ 已放行';}});}" +
+            "function copyText(id,btn){var t=document.getElementById(id).textContent;if(!t||t==='未设置'){return;}" +
+            "navigator.clipboard.writeText(t).then(()=>{btn.classList.add('copied');btn.textContent='✓ 已复制';" +
+            "setTimeout(()=>{btn.classList.remove('copied');btn.textContent='📋 复制';},1500);" +
+            "}).catch(()=>{var a=document.createElement('textarea');a.value=t;document.body.appendChild(a);a.select();document.execCommand('copy');document.body.removeChild(a);" +
+            "btn.classList.add('copied');btn.textContent='✓ 已复制';setTimeout(()=>{btn.classList.remove('copied');btn.textContent='📋 复制';},1500);});}" +
             "</script></body></html>";
 
         writeHttp(out, "200 OK", "text/html; charset=utf-8", html.getBytes("UTF-8"));
