@@ -19,10 +19,11 @@ jobs:
         java-version: '11'
         distribution: 'temurin'
 
-    - name: Setup Android SDK
-      uses: android-actions/setup-android@v3
-      with:
-        packages: 'platform-tools platforms;android-33 build-tools;33.0.2'
+    - name: Accept Android SDK licenses
+      run: yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses || true
+
+    - name: Install Android SDK components
+      run: $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager "platforms;android-33" "build-tools;33.0.2" --sdk_root=$ANDROID_HOME
 
     - name: Create local.properties
       run: echo "sdk.dir=$ANDROID_HOME" > local.properties
@@ -31,7 +32,7 @@ jobs:
       uses: gradle/actions/setup-gradle@v4
 
     - name: Build Debug APK
-      run: ./gradlew assembleDebug --no-daemon --stacktrace
+      run: chmod +x gradlew && ./gradlew assembleDebug --no-daemon --stacktrace
 
     - name: Build Release APK
       run: ./gradlew assembleRelease --no-daemon --stacktrace
