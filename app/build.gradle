@@ -1,0 +1,41 @@
+plugins {
+    id 'com.android.application'
+}
+
+android {
+    namespace 'com.qukan.hook'
+    compileSdk 33
+
+    defaultConfig {
+        applicationId "com.qukan.hook"
+        minSdk 26
+        targetSdk 33
+        versionCode 11
+        versionName "1.10"
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_11
+        targetCompatibility JavaVersion.VERSION_11
+    }
+
+    sourceSets {
+        main {
+            // 把 resources/ 里的 META-INF 打包进 APK
+            resources.srcDirs += ['src/main/resources']
+        }
+    }
+}
+
+dependencies {
+    compileOnly 'de.robv.android.xposed:api:82'
+}
+// IDE 需要的测试任务（注册空任务避免 not found 错误）
+tasks.register('unitTestClasses')
+tasks.register('androidTestClasses')
