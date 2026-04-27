@@ -229,183 +229,71 @@ public class MainHook implements IXposedHookLoadPackage {
     // Only reward video ads (WMRewardAd) are allowed through.
     // ======================================================================
     private void hookBlockNonRewardAds(ClassLoader cl) {
-        int blocked = 0;
+        int hooked = 0;
 
-        // --- 第一层：广告管理器层面拦截 (com.example.advertisinglibrary.ad.l) ---
-        try {
-            Class<?> adMgrCls = XposedHelpers.findClass("com.example.advertisinglibrary.ad.l", cl);
-
-            // 拦截插屏广告: l.p(Activity) — 主动加载插屏
-            XposedHelpers.findAndHookMethod(adMgrCls, "p", Activity.class,
-                    new XC_MethodReplacement() {
-                        @Override
-                        protected Object replaceHookedMethod(MethodHookParam param) {
-                            if (blockNonRewardAds) {
-                                LogServer.log("[AdBlock] ✖ 插屏广告 l.p() 已拦截");
-                                return null;
-                            }
-                            try { return XposedBridge.invokeOriginalMethod(param.method, param.thisObject, param.args); }
-                            catch (Throwable t) { return null; }
-                        }
-                    });
-            blocked++;
-
-            // 拦截定时插屏: l.t(Activity, Long) — 基于时间间隔触发的插屏
-            XposedHelpers.findAndHookMethod(adMgrCls, "t", Activity.class, Long.class,
-                    new XC_MethodReplacement() {
-                        @Override
-                        protected Object replaceHookedMethod(MethodHookParam param) {
-                            if (blockNonRewardAds) {
-                                LogServer.log("[AdBlock] ✖ 定时插屏 l.t() 已拦截");
-                                return null;
-                            }
-                            try { return XposedBridge.invokeOriginalMethod(param.method, param.thisObject, param.args); }
-                            catch (Throwable t) { return null; }
-                        }
-                    });
-            blocked++;
-
-            LogServer.log("[AdBlock] 广告管理器层 l.p/l.t 拦截注册成功");
-        } catch (Throwable t) {
-            LogServer.log("[AdBlock] 广告管理器层 l.p/l.t 拦截失败: " + t.getMessage());
-        }
-
-        // 拦截 Banner 广告: l.r(Activity, int, ViewGroup, WMBannerAdListener)
-        try {
-            Class<?> adMgrCls = XposedHelpers.findClass("com.example.advertisinglibrary.ad.l", cl);
-            Class<?> bannerListenerCls = XposedHelpers.findClass("com.windmill.sdk.banner.WMBannerAdListener", cl);
-            XposedHelpers.findAndHookMethod(adMgrCls, "r",
-                    Activity.class, int.class, android.view.ViewGroup.class, bannerListenerCls,
-                    new XC_MethodReplacement() {
-                        @Override
-                        protected Object replaceHookedMethod(MethodHookParam param) {
-                            if (blockNonRewardAds) {
-                                LogServer.log("[AdBlock] ✖ Banner广告 l.r() 已拦截");
-                                return null;
-                            }
-                            try { return XposedBridge.invokeOriginalMethod(param.method, param.thisObject, param.args); }
-                            catch (Throwable t) { return null; }
-                        }
-                    });
-            blocked++;
-            LogServer.log("[AdBlock] 广告管理器层 l.r(Banner) 拦截注册成功");
-        } catch (Throwable t) {
-            LogServer.log("[AdBlock] 广告管理器层 l.r(Banner) 拦截失败: " + t.getMessage());
-        }
-
-        // 拦截开屏广告: l.v(Activity, ViewGroup, WMSplashAdListener)
-        try {
-            Class<?> adMgrCls = XposedHelpers.findClass("com.example.advertisinglibrary.ad.l", cl);
-            Class<?> splashListenerCls = XposedHelpers.findClass("com.windmill.sdk.splash.WMSplashAdListener", cl);
-            XposedHelpers.findAndHookMethod(adMgrCls, "v",
-                    Activity.class, android.view.ViewGroup.class, splashListenerCls,
-                    new XC_MethodReplacement() {
-                        @Override
-                        protected Object replaceHookedMethod(MethodHookParam param) {
-                            if (blockNonRewardAds) {
-                                LogServer.log("[AdBlock] ✖ 开屏广告 l.v() 已拦截");
-                                return null;
-                            }
-                            try { return XposedBridge.invokeOriginalMethod(param.method, param.thisObject, param.args); }
-                            catch (Throwable t) { return null; }
-                        }
-                    });
-            blocked++;
-            LogServer.log("[AdBlock] 广告管理器层 l.v(开屏) 拦截注册成功");
-        } catch (Throwable t) {
-            LogServer.log("[AdBlock] 广告管理器层 l.v(开屏) 拦截失败: " + t.getMessage());
-        }
-
-        // --- 第二层：SDK层面拦截（双重保险）---
-
-        // 拦截 WMInterstitialAd.loadAd()
+        // --- 插屏广告：正常展示，几秒后自动关闭 ---
         try {
             Class<?> interstitialCls = XposedHelpers.findClass("com.windmill.sdk.interstitial.WMInterstitialAd", cl);
-            XposedHelpers.findAndHookMethod(interstitialCls, "loadAd",
-                    new XC_MethodReplacement() {
+            Class<?> adInfoCls = XposedHelpers.findClass("com.windmill.sdk.models.AdInfo", cl);
+
+            // Hook onVideoAdPlayStart：插屏开始展示后延迟几秒自动关闭
+            XposedHelpers.findAndHookMethod(interstitialCls, "onVideoAdPlayStart",
+                    adInfoCls, boolean.class,
+                    new XC_MethodHook() {
                         @Override
-                        protected Object replaceHookedMethod(MethodHookParam param) {
-                            if (blockNonRewardAds) {
-                                LogServer.log("[AdBlock] ✖ SDK层 WMInterstitialAd.loadAd() 已拦截");
-                                return false;
-                            }
-                            try { return XposedBridge.invokeOriginalMethod(param.method, param.thisObject, param.args); }
-                            catch (Throwable t) { return false; }
+                        protected void afterHookedMethod(MethodHookParam param) {
+                            if (!blockNonRewardAds) return;
+                            final Object interstitialAd = param.thisObject;
+                            final Object adInfo = param.args[0];
+                            int delaySec = new java.util.Random().nextInt(3) + 2; // 2~4 秒
+                            LogServer.log("[AdAuto] 插屏广告已展示，" + delaySec + " 秒后自动关闭");
+
+                            h().postDelayed(() -> {
+                                try {
+                                    // 触发 onVideoAdClosed 回调，让 App 认为用户手动关闭了
+                                    XposedHelpers.callMethod(interstitialAd, "onVideoAdClosed", adInfo);
+                                    LogServer.log("[AdAuto] ✓ 插屏广告已自动关闭");
+                                    // 关闭 SDK Activity
+                                    closeAdActivities();
+                                } catch (Throwable t) {
+                                    LogServer.log("[AdAuto] 插屏自动关闭异常: " + t.getMessage());
+                                }
+                            }, delaySec * 1000L);
                         }
                     });
-            blocked++;
-            LogServer.log("[AdBlock] SDK层 WMInterstitialAd.loadAd 拦截注册成功");
+            hooked++;
+            LogServer.log("[AdAuto] 插屏广告自动关闭 Hook 注册成功");
         } catch (Throwable t) {
-            LogServer.log("[AdBlock] SDK层 WMInterstitialAd.loadAd 拦截失败: " + t.getMessage());
+            LogServer.log("[AdAuto] 插屏广告 Hook 失败: " + t.getMessage());
         }
 
-        // 拦截 WMSplashAd.loadAdAndShow(ViewGroup)
+        // --- 开屏广告：正常展示，几秒后自动关闭 ---
         try {
             Class<?> splashCls = XposedHelpers.findClass("com.windmill.sdk.splash.WMSplashAd", cl);
             XposedHelpers.findAndHookMethod(splashCls, "loadAdAndShow", android.view.ViewGroup.class,
-                    new XC_MethodReplacement() {
+                    new XC_MethodHook() {
                         @Override
-                        protected Object replaceHookedMethod(MethodHookParam param) {
-                            if (blockNonRewardAds) {
-                                LogServer.log("[AdBlock] ✖ SDK层 WMSplashAd.loadAdAndShow() 已拦截");
-                                return null;
-                            }
-                            try { return XposedBridge.invokeOriginalMethod(param.method, param.thisObject, param.args); }
-                            catch (Throwable t) { return null; }
+                        protected void afterHookedMethod(MethodHookParam param) {
+                            if (!blockNonRewardAds) return;
+                            LogServer.log("[AdAuto] 开屏广告加载中，3 秒后自动关闭");
+                            h().postDelayed(() -> {
+                                try {
+                                    closeAdActivities();
+                                    LogServer.log("[AdAuto] ✓ 开屏广告已自动关闭");
+                                } catch (Throwable t) {
+                                    LogServer.log("[AdAuto] 开屏自动关闭异常: " + t.getMessage());
+                                }
+                            }, 3000);
                         }
                     });
-            blocked++;
-            LogServer.log("[AdBlock] SDK层 WMSplashAd.loadAdAndShow 拦截注册成功");
+            hooked++;
+            LogServer.log("[AdAuto] 开屏广告自动关闭 Hook 注册成功");
         } catch (Throwable t) {
-            LogServer.log("[AdBlock] SDK层 WMSplashAd.loadAdAndShow 拦截失败: " + t.getMessage());
+            LogServer.log("[AdAuto] 开屏广告 Hook 失败: " + t.getMessage());
         }
 
-        // 拦截 WMNativeAd.loadAd(NativeAdLoadListener) — 信息流广告
-        try {
-            Class<?> nativeCls = XposedHelpers.findClass("com.windmill.sdk.natives.WMNativeAd", cl);
-            Class<?> nativeListenerCls = XposedHelpers.findClass("com.windmill.sdk.natives.WMNativeAd$NativeAdLoadListener", cl);
-            XposedHelpers.findAndHookMethod(nativeCls, "loadAd", nativeListenerCls,
-                    new XC_MethodReplacement() {
-                        @Override
-                        protected Object replaceHookedMethod(MethodHookParam param) {
-                            if (blockNonRewardAds) {
-                                LogServer.log("[AdBlock] ✖ SDK层 WMNativeAd.loadAd() 信息流已拦截");
-                                return null;
-                            }
-                            try { return XposedBridge.invokeOriginalMethod(param.method, param.thisObject, param.args); }
-                            catch (Throwable t) { return null; }
-                        }
-                    });
-            blocked++;
-            LogServer.log("[AdBlock] SDK层 WMNativeAd.loadAd 拦截注册成功");
-        } catch (Throwable t) {
-            LogServer.log("[AdBlock] SDK层 WMNativeAd.loadAd 拦截失败: " + t.getMessage());
-        }
-
-        // 拦截 WMBannerView.loadAd(WMBannerAdRequest) — Banner 广告
-        try {
-            Class<?> bannerViewCls = XposedHelpers.findClass("com.windmill.sdk.banner.WMBannerView", cl);
-            Class<?> bannerReqCls = XposedHelpers.findClass("com.windmill.sdk.banner.WMBannerAdRequest", cl);
-            XposedHelpers.findAndHookMethod(bannerViewCls, "loadAd", bannerReqCls,
-                    new XC_MethodReplacement() {
-                        @Override
-                        protected Object replaceHookedMethod(MethodHookParam param) {
-                            if (blockNonRewardAds) {
-                                LogServer.log("[AdBlock] ✖ SDK层 WMBannerView.loadAd() 已拦截");
-                                return null;
-                            }
-                            try { return XposedBridge.invokeOriginalMethod(param.method, param.thisObject, param.args); }
-                            catch (Throwable t) { return null; }
-                        }
-                    });
-            blocked++;
-            LogServer.log("[AdBlock] SDK层 WMBannerView.loadAd 拦截注册成功");
-        } catch (Throwable t) {
-            LogServer.log("[AdBlock] SDK层 WMBannerView.loadAd 拦截失败: " + t.getMessage());
-        }
-
-        LogServer.log("[AdBlock] ★ 非激励广告拦截初始化完成，共注册 " + blocked + " 个拦截点");
-        XposedBridge.log("QukanHook [AdBlock] Registered " + blocked + " non-reward ad blocks");
+        LogServer.log("[AdAuto] ★ 广告自动关闭初始化完成，共注册 " + hooked + " 个 Hook");
+        XposedBridge.log("QukanHook [AdAuto] Registered " + hooked + " auto-close hooks");
     }
 
     // ======================================================================
