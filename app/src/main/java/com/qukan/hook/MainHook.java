@@ -615,24 +615,26 @@ public class MainHook implements IXposedHookLoadPackage {
         }
     }
 
+
+
     /**
-     * 查找当前最顶层的非 App Activity（即广告 Activity）
-     * 排除 App 自身的 Activity，返回最后一个（最顶层）
-     */
-    /**
-     * 在所有 Window 中查找插屏广告的关闭按钮并点击
-     * 关闭按钮特征：小尺寸、位于角落、contentDescription 含 close/关闭/×
+     * 在非 Activity 的 Dialog/Popup 窗口中查找关闭按钮并点击
      */
     @SuppressWarnings("unchecked")
     private boolean clickAdCloseButton() {
         try {
-            // 获取 WindowManagerGlobal 实例及其所有根 View
             Class<?> wmgCls = Class.forName("android.view.WindowManagerGlobal");
             Object wmg = wmgCls.getMethod("getInstance").invoke(null);
+
             java.lang.reflect.Field viewsField = wmgCls.getDeclaredField("mViews");
             viewsField.setAccessible(true);
             java.util.ArrayList<android.view.View> rootViews =
                     (java.util.ArrayList<android.view.View>) viewsField.get(wmg);
+
+            java.lang.reflect.Field paramsField = wmgCls.getDeclaredField("mParams");
+            paramsField.setAccessible(true);
+            java.util.ArrayList<android.view.WindowManager.LayoutParams> params =
+                    (java.util.ArrayList<android.view.WindowManager.LayoutParams>) paramsField.get(wmg);
 
             if (rootViews == null || rootViews.isEmpty()) return false;
 
@@ -640,12 +642,25 @@ public class MainHook implements IXposedHookLoadPackage {
 
             // 倒序遍历（最顶层窗口在后面）
             for (int i = rootViews.size() - 1; i >= 0; i--) {
+                android.view.WindowManager.LayoutParams lp = params.get(i);
+                // 跳过 Activity 基础窗口（TYPE_BASE_APPLICATION = 1）
+                if (lp.type == android.view.WindowManager.LayoutParams.TYPE_BASE_APPLICATION) {
+                    continue;
+                }
+
                 android.view.View rootView = rootViews.get(i);
+                LogServer.log("[AdAuto] 扫描窗口 #" + i + " type=" + lp.type
+                        + " title=" + lp.getTitle());
+
+                // 先打印窗口的前几层 View 结构帮助调试
+                dumpViewTree(rootView, 0, 3);
+
                 // 递归查找关闭按钮
                 android.view.View closeBtn = findCloseButton(rootView);
                 if (closeBtn != null) {
                     LogServer.log("[AdAuto] 找到关闭按钮: " + closeBtn.getClass().getSimpleName()
-                            + " (" + closeBtn.getWidth() + "x" + closeBtn.getHeight() + ")");
+                            + " (" + closeBtn.getWidth() + "x" + closeBtn.getHeight() + ")"
+                            + " desc=" + closeBtn.getContentDescription());
                     closeBtn.performClick();
                     return true;
                 }
@@ -657,10 +672,30 @@ public class MainHook implements IXposedHookLoadPackage {
     }
 
     /**
+     * 打印 View 树（调试用，限制深度）
+     */
+    private void dumpViewTree(android.view.View view, int depth, int maxDepth) {
+        if (view == null || depth >= maxDepth) return;
+        String indent = new String(new char[depth * 2]).replace('\0', ' ');
+        String info = indent + view.getClass().getSimpleName()
+                + " [" + view.getWidth() + "x" + view.getHeight() + "]"
+                + (view.isClickable() ? " clickable" : "")
+                + (view.getContentDescription() != null ? " desc=\"" + view.getContentDescription() + "\"" : "");
+        LogServer.log("[ViewDump] " + info);
+        if (view instanceof android.view.ViewGroup) {
+            android.view.ViewGroup vg = (android.view.ViewGroup) view;
+            for (int i = 0; i < vg.getChildCount(); i++) {
+                dumpViewTree(vg.getChildAt(i), depth + 1, maxDepth);
+            }
+        }
+    }
+
+    /**
      * 递归查找关闭按钮
      * 识别标准：
      * 1. contentDescription 含 close/关闭/×/跳过
-     * 2. 或者是角落的小尺寸可点击 View（宽高 < 150px 且位于顶部）
+     * 2. 或者 View 的 ID 名含 close/dismiss
+     * 3. 或者是角落的小尺寸可点击 ImageView
      */
     private android.view.View findCloseButton(android.view.View view) {
         if (view == null) return null;
@@ -670,23 +705,37 @@ public class MainHook implements IXposedHookLoadPackage {
         if (desc != null) {
             String d = desc.toString().toLowerCase();
             if (d.contains("close") || d.contains("关闭") || d.contains("×")
-                    || d.contains("跳过") || d.contains("skip")) {
-                if (view.isClickable() && view.getVisibility() == android.view.View.VISIBLE) {
+                    || d.contains("跳过") || d.contains("skip") || d.contains("dismiss")) {
+                if (view.getVisibility() == android.view.View.VISIBLE) {
                     return view;
                 }
             }
         }
 
-        // 检查小尺寸角落按钮（宽高 < 150px，位于顶部 200px 内）
-        if (view.isClickable() && view.getVisibility() == android.view.View.VISIBLE
-                && view.getWidth() > 0 && view.getWidth() < 150
-                && view.getHeight() > 0 && view.getHeight() < 150) {
+        // 检查 View ID 名称
+        try {
+            int id = view.getId();
+            if (id != android.view.View.NO_ID) {
+                String idName = view.getResources().getResourceEntryName(id).toLowerCase();
+                if (idName.contains("close") || idName.contains("skip")
+                        || idName.contains("dismiss") || idName.contains("shut")) {
+                    if (view.getVisibility() == android.view.View.VISIBLE) {
+                        return view;
+                    }
+                }
+            }
+        } catch (Throwable ignored) {}
+
+        // 检查小尺寸角落按钮（ImageView 系列，宽高 < 200px，位于顶部 300px 内）
+        if (view.getVisibility() == android.view.View.VISIBLE
+                && (view instanceof android.widget.ImageView || view instanceof android.widget.ImageButton)
+                && view.getWidth() > 0 && view.getWidth() < 200
+                && view.getHeight() > 0 && view.getHeight() < 200) {
             int[] loc = new int[2];
             view.getLocationOnScreen(loc);
-            // 顶部 200px 内，左边 200px 或右边 200px
-            if (loc[1] < 200) {
+            if (loc[1] < 300) {
                 int screenW = view.getContext().getResources().getDisplayMetrics().widthPixels;
-                if (loc[0] < 200 || loc[0] > screenW - 200) {
+                if (loc[0] < 250 || loc[0] > screenW - 250) {
                     return view;
                 }
             }
