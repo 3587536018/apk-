@@ -3,7 +3,7 @@ name: Build Xposed Module APK
 on:
   push:
     branches: [ main, master ]
-  workflow_dispatch:  # 允许手动触发
+  workflow_dispatch:
 
 jobs:
   build:
@@ -21,21 +21,20 @@ jobs:
 
     - name: Setup Android SDK
       uses: android-actions/setup-android@v3
-
-    - name: Setup Gradle Wrapper
-      uses: gradle/actions/setup-gradle@v4
-
-    - name: Grant execute permission
-      run: chmod +x gradlew
+      with:
+        packages: 'platform-tools platforms;android-33 build-tools;33.0.2'
 
     - name: Create local.properties
       run: echo "sdk.dir=$ANDROID_HOME" > local.properties
 
+    - name: Setup Gradle
+      uses: gradle/actions/setup-gradle@v4
+
     - name: Build Debug APK
-      run: ./gradlew assembleDebug --no-daemon
+      run: ./gradlew assembleDebug --no-daemon --stacktrace
 
     - name: Build Release APK
-      run: ./gradlew assembleRelease --no-daemon
+      run: ./gradlew assembleRelease --no-daemon --stacktrace
 
     - name: Upload Debug APK
       uses: actions/upload-artifact@v4
