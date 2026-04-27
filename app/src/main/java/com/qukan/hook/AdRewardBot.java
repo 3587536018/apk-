@@ -213,24 +213,32 @@ public class AdRewardBot {
             {"65", "5491239561962900", "kuaishou", "65", "插屏广告", "32194000064", "5000", "15000", "300", "450"},
         };
 
-        // 随机抽取 2~3 条不重复的广告
-        int adCount = random.nextBoolean() ? 2 : 3;
-        adCount = Math.min(adCount, adPool.length);
+        // 按类型分组
+        java.util.List<String[]> interPool = new java.util.ArrayList<>();  // 插屏 65
+        java.util.List<String[]> feedPool = new java.util.ArrayList<>();   // 信息流 64
+        java.util.List<String[]> bannerPool = new java.util.ArrayList<>(); // Banner 63
+        for (String[] ad : adPool) {
+            switch (ad[3]) {
+                case "65": interPool.add(ad); break;
+                case "64": feedPool.add(ad); break;
+                case "63": bannerPool.add(ad); break;
+            }
+        }
 
-        // Fisher-Yates 洗牌取前 adCount 个
-        String[][] shuffled = adPool.clone();
-        for (int i = shuffled.length - 1; i > 0; i--) {
-            int j = random.nextInt(i + 1);
-            String[] temp = shuffled[i];
-            shuffled[i] = shuffled[j];
-            shuffled[j] = temp;
+        // 固定1条插屏 + 随机1条信息流或Banner（信息流概率70%）
+        String[][] selected = new String[2][];
+        selected[0] = interPool.get(random.nextInt(interPool.size()));
+        if (random.nextDouble() < 0.7) {
+            selected[1] = feedPool.get(random.nextInt(feedPool.size()));
+        } else {
+            selected[1] = bannerPool.get(random.nextInt(bannerPool.size()));
         }
 
         JSONArray details = new JSONArray();
-        StringBuilder logMsg = new StringBuilder("[Bot] 📊 生成 " + adCount + " 条广告:");
+        StringBuilder logMsg = new StringBuilder("[Bot] 📊 生成 2 条广告:");
 
-        for (int i = 0; i < adCount; i++) {
-            String[] ad = shuffled[i];
+        for (int i = 0; i < selected.length; i++) {
+            String[] ad = selected[i];
             int ecpmMin = Integer.parseInt(ad[6]);
             int ecpmMax = Integer.parseInt(ad[7]);
             int amountMin = Integer.parseInt(ad[8]);
