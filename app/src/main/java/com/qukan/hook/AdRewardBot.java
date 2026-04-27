@@ -187,16 +187,10 @@ public class AdRewardBot {
 
         // 生成信息流 eCPM
         int ecpmFeed = randomInt(FEED_ECPM_MIN, FEED_ECPM_MAX);
-        if (random.nextDouble() > 0.6) {
-            ecpmFeed = Math.round(ecpmFeed / 100f) * 100;
-        }
         double moneyFeed = ecpmFeed / 10000.0;
 
         // 生成插屏 eCPM
         int ecpmInter = randomInt(INTER_ECPM_MIN, INTER_ECPM_MAX);
-        if (random.nextDouble() > 0.6) {
-            ecpmInter = Math.round(ecpmInter / 100f) * 100;
-        }
         double moneyInter = ecpmInter / 10000.0;
         int interAmount = (int) (moneyInter * 10000);
 
