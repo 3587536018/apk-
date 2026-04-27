@@ -747,9 +747,29 @@ public class MainHook implements IXposedHookLoadPackage {
             }
         }
 
-        // 4. 小尺寸 ImageView（屏幕上半部分，可能是关闭图标）
-        if ((view instanceof android.widget.ImageView || view instanceof android.widget.ImageButton)
-                && view.getWidth() < 200 && view.getHeight() < 200
+        // 4. 任何小尺寸可点击 View（不限类型，× 可能是自定义 View）
+        //    排除 ViewGroup 容器（避免匹配到布局容器）
+        if (!(view instanceof android.view.ViewGroup)
+                && view.getWidth() < 160 && view.getHeight() < 160) {
+            boolean clickable = view.isClickable();
+            // 也检查 hasOnClickListeners（有些 View 不设 clickable 但有点击监听）
+            if (!clickable) {
+                try { clickable = view.hasOnClickListeners(); } catch (Throwable ignored) {}
+            }
+            if (clickable) {
+                int[] loc = new int[2];
+                view.getLocationOnScreen(loc);
+                int screenH = view.getContext().getResources().getDisplayMetrics().heightPixels;
+                if (loc[1] < screenH / 2) {
+                    return view;
+                }
+            }
+        }
+
+        // 5. 小尺寸 ViewGroup 容器（× 按钮可能是 FrameLayout 包裹 ImageView）
+        if (view instanceof android.view.ViewGroup
+                && view.getWidth() > 0 && view.getWidth() < 160
+                && view.getHeight() > 0 && view.getHeight() < 160
                 && view.isClickable()) {
             int[] loc = new int[2];
             view.getLocationOnScreen(loc);
