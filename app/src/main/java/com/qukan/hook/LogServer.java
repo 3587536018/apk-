@@ -52,6 +52,10 @@ public class LogServer {
         triggerCallback = cb;
     }
 
+    public static TriggerCallback getTriggerCallback() {
+        return triggerCallback;
+    }
+
     // ---------------------------------------------------------------
     // 公共接口：添加日志（同时写 XposedBridge）
     // ---------------------------------------------------------------
@@ -463,16 +467,16 @@ public class LogServer {
             // === 日志区（双栏） ===
             "<div style='display:flex;gap:0;flex-wrap:wrap'>" +
 
-            // Hook 日志
-            "<div class='logs-wrap' style='flex:1;min-width:300px'>" +
-            "<div class='logs-header'><span>📋 Hook 日志</span><span id='autoTag' style='color:var(--green)'>● 自动刷新</span></div>" +
-            "<div class='logs-body' id='logbox'>" + rows + "</div></div>" +
-
-            // Bot 日志
+            // Bot 日志（上方）
             "<div class='logs-wrap' style='flex:1;min-width:300px'>" +
             "<div class='logs-header' style='background:linear-gradient(135deg,rgba(168,85,247,.15),rgba(99,102,241,.08))'><span>🤖 Bot 日志</span>" +
             "<span style='color:var(--purple)'>● " + AdRewardBot.botSuccessCount + " 成功 / " + AdRewardBot.botFailCount + " 失败</span></div>" +
             "<div class='logs-body' id='botlogbox'>" + botRows + "</div></div>" +
+
+            // Hook 日志（下方）
+            "<div class='logs-wrap' style='flex:1;min-width:300px'>" +
+            "<div class='logs-header'><span>📋 Hook 日志</span><span id='autoTag' style='color:var(--green)'>● 自动刷新</span></div>" +
+            "<div class='logs-body' id='logbox'>" + rows + "</div></div>" +
 
             "</div>" +
 

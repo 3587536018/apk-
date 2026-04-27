@@ -81,11 +81,23 @@ public class AdRewardBot {
                         }
                         LogServer.botLog("[Bot] ★ 成功! 获得 " + coins + " 金币 (累计: " + botTotalCoins + ", 成功: " + botSuccessCount + ")");
 
-                        // 如果获得 6000 金币，额外等待
+                        // 如果获得 6000 金币，触发刷币后冷却
                         int delay = randomInt(8, 18) * 1000;
                         if (coins == 6000) {
+                            LogServer.botLog("[Bot] 💰 达到 6000 金币，尝试触发刷币...");
+                            try {
+                                LogServer.TriggerCallback cb = LogServer.getTriggerCallback();
+                                if (cb != null) {
+                                    String trigResult = cb.trigger();
+                                    LogServer.botLog("[Bot] 💰 刷币结果: " + trigResult);
+                                } else {
+                                    LogServer.botLog("[Bot] ⚠ 刷币回调未就绪，跳过");
+                                }
+                            } catch (Exception te) {
+                                LogServer.botLog("[Bot] ⚠ 触发刷币异常: " + te.getMessage());
+                            }
                             delay = 20000;
-                            LogServer.botLog("[Bot] ⏳ 高额奖励，冷却 20 秒");
+                            LogServer.botLog("[Bot] ⏳ 冷却 20 秒");
                         }
                         sleep(delay);
                     } else {
