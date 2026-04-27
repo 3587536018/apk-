@@ -253,16 +253,13 @@ public class AdRewardBot {
         payload.put("token", token);
         String plain = payload.toString();
 
-        // AES-CBC 加密 + PKCS5 填充
-        int padLen = 16 - (plain.length() % 16);
-        StringBuilder padded = new StringBuilder(plain);
-        for (int i = 0; i < padLen; i++) padded.append((char) padLen);
-
-        Cipher cipher = Cipher.getInstance("AES/CBC/NoPadding");
+        // AES-CBC 加密（使用 PKCS5Padding 自动处理填充）
+        byte[] plainBytes = plain.getBytes("UTF-8");
+        Cipher cipher = Cipher.getInstance("AES/CBC/PKCS5Padding");
         cipher.init(Cipher.ENCRYPT_MODE,
                 new SecretKeySpec(AES_KEY, "AES"),
                 new IvParameterSpec(AES_IV));
-        byte[] encrypted = cipher.doFinal(padded.toString().getBytes("UTF-8"));
+        byte[] encrypted = cipher.doFinal(plainBytes);
         return Base64.encodeToString(encrypted, Base64.NO_WRAP);
     }
 
