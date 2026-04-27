@@ -297,7 +297,7 @@ public class LogServer {
                 else if (l.contains("失败") || l.contains("STOP") || l.contains("异常")) cls = "log-e";
                 else if (l.contains("[AdBlock]")) cls = "log-b";
                 else if (l.contains("✓") || l.contains("激活") || l.contains("成功")) cls = "log-i";
-                rows.append("<div class='log-row ").append(cls).append("' style='animation-delay:").append(idx * 0.01).append("s'>")
+                rows.append("<div class='log-row ").append(cls).append("'>")
                         .append("<span class='log-dot'></span>").append(escHtml(l)).append("</div>\n");
             }
         }
@@ -312,7 +312,7 @@ public class LogServer {
                 else if (l.contains("✗") || l.contains("失败") || l.contains("异常")) cls = "log-e";
                 else if (l.contains("📊") || l.contains("参数")) cls = "log-i";
                 else if (l.contains("▶") || l.contains("■")) cls = "log-b";
-                botRows.append("<div class='log-row ").append(cls).append("' style='animation-delay:").append(idx * 0.01).append("s'>")
+                botRows.append("<div class='log-row ").append(cls).append("'>")
                         .append("<span class='log-dot'></span>").append(escHtml(l)).append("</div>\n");
             }
         }
@@ -402,7 +402,7 @@ public class LogServer {
 
             // 日志行
             ".log-row{padding:4px 14px;font-family:'JetBrains Mono',monospace;font-size:12px;border-bottom:1px solid rgba(30,42,66,.4);" +
-            "display:flex;align-items:flex-start;gap:8px;animation:fadeIn .3s ease;transition:background .15s}" +
+            "display:flex;align-items:flex-start;gap:8px;transition:background .15s}" +
             ".log-row:hover{background:rgba(99,102,241,.06)}" +
             ".log-dot{width:6px;height:6px;border-radius:50%;margin-top:5px;flex-shrink:0}" +
             ".log-n .log-dot{background:#475569}.log-r .log-dot{background:var(--green);box-shadow:0 0 6px var(--green)}" +
@@ -485,12 +485,12 @@ public class LogServer {
 
             // === JS ===
             "<script>" +
-            "var _autoScroll=true;" +
-            "var lb=document.getElementById('logbox');lb.scrollTop=lb.scrollHeight;" +
-            "var bb=document.getElementById('botlogbox');if(bb)bb.scrollTop=bb.scrollHeight;" +
+            "var _autoScroll=true;var _lastLogCnt=0;var _lastBotCnt=0;" +
+            "var lb=document.getElementById('logbox');lb.scrollTop=lb.scrollHeight;_lastLogCnt=lb.children.length;" +
+            "var bb=document.getElementById('botlogbox');if(bb){bb.scrollTop=bb.scrollHeight;_lastBotCnt=bb.children.length;}" +
             // 检测用户是否手动滚动了日志区（停止自动滚动）
             "lb.addEventListener('scroll',function(){_autoScroll=lb.scrollTop+lb.clientHeight>=lb.scrollHeight-30;});" +
-            // AJAX 轮询替代整页刷新
+            // AJAX 轮询替代整页刷新（仅在日志数量变化时更新DOM）
             "function pollUpdate(){" +
             "fetch('/api/poll').then(r=>r.json()).then(d=>{" +
             // 更新状态栏
@@ -500,10 +500,10 @@ public class LogServer {
             "document.querySelectorAll('.stat-val')[3].textContent=d.blockCount;" +
             "document.querySelectorAll('.stat-val')[4].textContent=d.botSuccess;" +
             "document.querySelectorAll('.stat-val')[5].textContent=d.botCoins;" +
-            // 更新 Hook 日志
-            "if(d.hookHtml){lb.innerHTML=d.hookHtml;if(_autoScroll)lb.scrollTop=lb.scrollHeight;}" +
-            // 更新 Bot 日志
-            "if(d.botHtml&&bb){bb.innerHTML=d.botHtml;bb.scrollTop=bb.scrollHeight;}" +
+            // 更新 Hook 日志（仅当日志数量变化时）
+            "if(d.logCount!==_lastLogCnt){_lastLogCnt=d.logCount;lb.innerHTML=d.hookHtml;if(_autoScroll)lb.scrollTop=lb.scrollHeight;}" +
+            // 更新 Bot 日志（仅当日志数量变化时）
+            "if(d.botLogCount!==_lastBotCnt&&bb){_lastBotCnt=d.botLogCount;bb.innerHTML=d.botHtml;bb.scrollTop=bb.scrollHeight;}" +
             // 更新 Bot 状态栏计数
             "var bh=document.querySelector('.logs-header span[style]');" +
             "if(bh)bh.textContent='● '+d.botSuccess+' 成功 / '+d.botFail+' 失败';" +
@@ -599,6 +599,7 @@ public class LogServer {
                 "\"botCoins\":" + AdRewardBot.botTotalCoins + "," +
                 "\"botPending\":" + AdRewardBot.botPendingCoins + "," +
                 "\"botRunning\":" + AdRewardBot.botRunning + "," +
+                "\"botLogCount\":" + botLogs.size() + "," +
                 "\"hookHtml\":\"" + escJson(hookHtml.toString()) + "\"," +
                 "\"botHtml\":\"" + escJson(botHtml.toString()) + "\"" +
                 "}";
