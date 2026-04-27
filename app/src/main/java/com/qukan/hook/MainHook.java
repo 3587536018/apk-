@@ -58,6 +58,7 @@ public class MainHook implements IXposedHookLoadPackage {
 
     // To access Context for SharedPreferences
     public static volatile android.content.Context appContext;
+    public static volatile ClassLoader appClassLoader;
 
     public static void saveCreds(String oaid, String token, String userJson) {
         if (oaid != null) oaid = oaid.trim().replace("\"", "");
@@ -127,6 +128,7 @@ public class MainHook implements IXposedHookLoadPackage {
                 protected void beforeHookedMethod(MethodHookParam param) {
                     if (appContext == null) {
                         appContext = (android.content.Context) param.thisObject;
+                        appClassLoader = param.thisObject.getClass().getClassLoader();
                         // 1. 先从 hook_creds 恢复我们自己存的凭证
                         android.content.SharedPreferences sp = appContext.getSharedPreferences("hook_creds", 0);
                         String diskOaid = sp.getString("oaid", null);
@@ -245,20 +247,25 @@ public class MainHook implements IXposedHookLoadPackage {
                             if (!blockNonRewardAds) return;
                             final Object interstitialAd = param.thisObject;
                             final Object adInfo = param.args[0];
-                            int delaySec = new java.util.Random().nextInt(3) + 2; // 2~4 秒
-                            LogServer.log("[AdAuto] 插屏广告已展示，" + delaySec + " 秒后自动关闭");
+                            LogServer.log("[AdAuto] 插屏广告已展示，5 秒后模拟返回关闭");
 
                             h().postDelayed(() -> {
                                 try {
-                                    // 触发 onVideoAdClosed 回调，让 App 认为用户手动关闭了
-                                    XposedHelpers.callMethod(interstitialAd, "onVideoAdClosed", adInfo);
-                                    LogServer.log("[AdAuto] ✓ 插屏广告已自动关闭");
-                                    // 关闭 SDK Activity
-                                    closeAdActivities();
+                                    // 模拟用户按返回键关闭广告，让 SDK 自然走 onVideoAdClosed 回调
+                                    Activity topAd = findTopAdActivity();
+                                    if (topAd != null && !topAd.isFinishing()) {
+                                        topAd.dispatchKeyEvent(new android.view.KeyEvent(
+                                                android.view.KeyEvent.ACTION_DOWN, android.view.KeyEvent.KEYCODE_BACK));
+                                        topAd.dispatchKeyEvent(new android.view.KeyEvent(
+                                                android.view.KeyEvent.ACTION_UP, android.view.KeyEvent.KEYCODE_BACK));
+                                        LogServer.log("[AdAuto] ✓ 已模拟返回键关闭: " + topAd.getClass().getSimpleName());
+                                    } else {
+                                        LogServer.log("[AdAuto] ⚠ 未找到广告 Activity，跳过");
+                                    }
                                 } catch (Throwable t) {
                                     LogServer.log("[AdAuto] 插屏自动关闭异常: " + t.getMessage());
                                 }
-                            }, delaySec * 1000L);
+                            }, 5000);
                         }
                     });
             hooked++;
@@ -562,6 +569,34 @@ public class MainHook implements IXposedHookLoadPackage {
         } catch (Throwable t) {
             LogServer.log("[Hook] hookWMRewardAdShow FAIL: " + t.getMessage());
             XposedBridge.log("QukanHook [Hook] hookWMRewardAdShow FAIL: " + t);
+        }
+    }
+
+    /**
+     * 查找当前最顶层的广告 SDK Activity
+     */
+    private Activity findTopAdActivity() {
+        try {
+            Object activityThread = XposedHelpers.callStaticMethod(
+                    XposedHelpers.findClass("android.app.ActivityThread", null),
+                    "currentActivityThread");
+            java.util.Map<?, ?> activities = (java.util.Map<?, ?>)
+                    XposedHelpers.getObjectField(activityThread, "mActivities");
+            if (activities == null) return null;
+            Activity topAd = null;
+            for (Object record : activities.values()) {
+                Activity act = (Activity) XposedHelpers.getObjectField(record, "activity");
+                if (act != null && !act.isFinishing()) {
+                    String name = act.getClass().getName();
+                    if (name.startsWith("com.windmill") || name.startsWith("com.czhj")
+                            || name.startsWith("com.sigmob")) {
+                        topAd = act; // 取最后一个（通常是最顶层）
+                    }
+                }
+            }
+            return topAd;
+        } catch (Throwable t) {
+            return null;
         }
     }
 

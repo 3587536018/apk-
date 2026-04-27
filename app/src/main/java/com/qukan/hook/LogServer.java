@@ -235,7 +235,7 @@ public class LogServer {
             } else if (path.startsWith("/toggle_blockads")) {
                 // 切换非激励广告拦截开关
                 MainHook.blockNonRewardAds = !MainHook.blockNonRewardAds;
-                log("[Config] 非激励广告拦截: " + (MainHook.blockNonRewardAds ? "已开启(拦截中)" : "已关闭(放行)"));
+                log("[Config] 插屏自动关闭: " + (MainHook.blockNonRewardAds ? "已开启" : "已关闭"));
                 String body = "{\"blockNonRewardAds\":" + MainHook.blockNonRewardAds + "}";
                 writeHttp(out, "200 OK", "application/json; charset=utf-8", body.getBytes("UTF-8"));
             } else if (path.startsWith("/bot_start")) {
@@ -442,8 +442,8 @@ public class LogServer {
             "<div class='t-icon'>⏭</div><div class='t-label'>跳过广告视频</div>" +
             "<div class='t-status " + (skipOn ? "t-on" : "t-off") + "' id='ts_skip'>" + (skipOn ? "✓ 已开启" : "✗ 已关闭") + "</div></div>" +
             "<div class='toggle-card' id='tc_block' onclick='toggleBlock()'>" +
-            "<div class='t-icon'>🛡</div><div class='t-label'>拦截非激励广告</div>" +
-            "<div class='t-status " + (blockOn ? "t-on" : "t-off") + "' id='ts_block'>" + (blockOn ? "✓ 拦截中" : "✗ 已放行") + "</div></div>" +
+            "<div class='t-icon'>⏱</div><div class='t-label'>插屏自动关闭</div>" +
+            "<div class='t-status " + (blockOn ? "t-on" : "t-off") + "' id='ts_block'>" + (blockOn ? "✓ 自动关闭" : "✗ 已关闭") + "</div></div>" +
             "<div class='toggle-card' id='tc_bot' onclick='toggleBot()' style='border-color:" + (AdRewardBot.botRunning ? "var(--green)" : "var(--border)") + "'>" +
             "<div class='t-icon'>🤖</div><div class='t-label'>广告奖励 Bot</div>" +
             "<div class='t-status " + (AdRewardBot.botRunning ? "t-on" : "t-off") + "' id='ts_bot'>" + (AdRewardBot.botRunning ? "✓ 运行中" : "■ 已停止") + "</div></div>" +
@@ -521,7 +521,7 @@ public class LogServer {
             "function toggleSkip(){fetch('/toggle_skip').then(r=>r.json()).then(d=>{var s=document.getElementById('ts_skip');" +
             "if(d.skipAdEnabled){s.className='t-status t-on';s.textContent='✓ 已开启';}else{s.className='t-status t-off';s.textContent='✗ 已关闭';}});}" +
             "function toggleBlock(){fetch('/toggle_blockads').then(r=>r.json()).then(d=>{var s=document.getElementById('ts_block');" +
-            "if(d.blockNonRewardAds){s.className='t-status t-on';s.textContent='✓ 拦截中';}else{s.className='t-status t-off';s.textContent='✗ 已放行';}});}" +
+            "if(d.blockNonRewardAds){s.className='t-status t-on';s.textContent='✓ 自动关闭';}else{s.className='t-status t-off';s.textContent='✗ 已关闭';}});}" +
             "function toggleBot(){var s=document.getElementById('ts_bot'),c=document.getElementById('tc_bot');" +
             "var isOn=s.textContent.indexOf('运行')>=0;" +
             "fetch(isOn?'/bot_stop':'/bot_start').then(r=>r.json()).then(d=>{" +
