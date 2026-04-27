@@ -62,38 +62,11 @@ public class AdRewardBot {
                         if (coins >= 0) {
                             botSuccessCount++;
                             botPendingCoins += coins;
-                            LogServer.botLog("[Bot] ★ 注入成功 gold=" + coins + " (待刷: " + botPendingCoins + ", 总计: " + botTotalCoins + ", 第 " + botSuccessCount + " 条)");
+                            LogServer.botLog("[Bot] ★ 注入成功 gold=" + coins + " (累计: " + botPendingCoins + ", 第 " + botSuccessCount + " 条)");
 
-                            // 累积达到 6000 金币时触发刷币
-                            if (botPendingCoins >= 6000) {
-                                LogServer.botLog("[Bot] 💰 待刷金币达 " + botPendingCoins + "，触发刷币...");
-                                boolean flushOk = false;
-                                try {
-                                    LogServer.TriggerCallback cb = LogServer.getTriggerCallback();
-                                    if (cb != null) {
-                                        String trigResult = cb.trigger();
-                                        LogServer.botLog("[Bot] 💰 刷币结果: " + trigResult);
-                                        flushOk = trigResult != null && (trigResult.contains("Triggered") || trigResult.contains("成功"));
-                                    } else {
-                                        LogServer.botLog("[Bot] ⚠ 刷币回调未就绪，跳过");
-                                    }
-                                } catch (Exception te) {
-                                    LogServer.botLog("[Bot] ⚠ 触发刷币异常: " + te.getMessage());
-                                }
-                                if (flushOk) {
-                                    botTotalCoins += botPendingCoins;
-                                    LogServer.botLog("[Bot] ✅ 刷币成功! 本轮 " + botPendingCoins + " 金币已入账 (总计: " + botTotalCoins + ")");
-                                } else {
-                                    LogServer.botLog("[Bot] ⚠ 刷币未成功，" + botPendingCoins + " 金币暂不计入");
-                                }
-                                botPendingCoins = 0;
-                                LogServer.botLog("[Bot] ⏳ 冷却 20 秒");
-                                sleep(20000);
-                            } else {
-                                // 每条广告间隔 8~18 秒
-                                int delay = randomInt(8, 18) * 1000;
-                                sleep(delay);
-                            }
+                            // 每条广告间隔 8~18 秒
+                            int delay = randomInt(8, 18) * 1000;
+                            sleep(delay);
                         } else {
                             botFailCount++;
                             LogServer.botLog("[Bot] ✗ 注入失败 (失败: " + botFailCount + ")");
