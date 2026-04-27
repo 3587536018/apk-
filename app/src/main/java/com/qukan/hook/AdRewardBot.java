@@ -185,32 +185,32 @@ public class AdRewardBot {
     private static String buildAndEncrypt() throws Exception {
         long nowMs = System.currentTimeMillis();
 
-        // 广告配置池（与 main.py 完全同步）
-        // 格式: {admodel_id, admodel_value, adplatform_name, adtype_id, adtype_name, network_placement_id, ecpm_min, ecpm_max, amount_min, amount_max}
+        // 广告配置池（与趣玩.py完全同步）
+        // 格式: {admodel_id, admodel_value, adplatform_name, adtype_id, adtype_name, network_placement_id, ecpm_min, ecpm_max}
         String[][] adPool = {
             // 信息流广告
-            {"64", "8983638867376500", "gdt", "64", "信息流广告", "9248159160678469", "600", "3000", "3", "30"},
-            {"64", "8983638867376500", "gromore", "64", "信息流广告", "103956908", "600", "3000", "5", "30"},
-            {"64", "8983638867376500", "kuaishou", "64", "信息流广告", "32194000050", "600", "3000", "3", "30"},
-            {"64", "8983638867376500", "baidu", "64", "信息流广告", "19232858", "20", "300", "1", "20"},
-            {"64", "8983638867376500", "kuaishou", "64", "信息流广告", "32194000051", "600", "1500", "40", "80"},
+            {"64", "8983638867376500", "gdt", "64", "信息流广告", "9248159160678469", "600", "1500"},
+            {"64", "8983638867376500", "gromore", "64", "信息流广告", "103956908", "600", "1500"},
+            {"64", "8983638867376500", "kuaishou", "64", "信息流广告", "32194000050", "600", "1500"},
+            {"64", "8983638867376500", "baidu", "64", "信息流广告", "19232858", "600", "1500"},
+            {"64", "8983638867376500", "kuaishou", "64", "信息流广告", "32194000051", "600", "1500"},
             // Banner广告
-            {"63", "5169829687932834", "gdt", "63", "Banner广告", "5278357170370989", "200", "2500", "10", "150"},
-            {"63", "5169829687932834", "gromore", "63", "Banner广告", "103955933", "400", "2500", "10", "150"},
-            {"63", "5169829687932834", "kuaishou", "63", "Banner广告", "32194000012", "800", "2600", "10", "150"},
-            {"63", "5169829687932834", "kuaishou", "63", "Banner广告", "32194000014", "500", "1500", "30", "90"},
+            {"63", "5169829687932834", "gdt", "63", "Banner广告", "5278357170370989", "200", "2500"},
+            {"63", "5169829687932834", "gromore", "63", "Banner广告", "103955933", "400", "2500"},
+            {"63", "5169829687932834", "kuaishou", "63", "Banner广告", "32194000012", "200", "2600"},
+            {"63", "5169829687932834", "kuaishou", "63", "Banner广告", "32194000014", "500", "1500"},
             // 插屏广告
-            {"65", "5491239561962900", "gromore", "65", "插屏广告", "103956914", "7000", "9000", "20", "240"},
-            {"65", "5491239561962900", "gdt", "65", "插屏广告", "6268450130179263", "5000", "15000", "20", "240"},
-            {"65", "5491239561962900", "gdt", "65", "插屏广告", "5278953120871194", "5000", "15000", "20", "240"},
-            {"65", "5491239561962900", "gromore", "65", "插屏广告", "103955254", "5000", "15000", "20", "240"},
-            {"65", "5491239561962900", "baidu", "65", "插屏广告", "19233026", "2500", "4000", "150", "250"},
-            {"65", "5491239561962900", "kuaishou", "65", "插屏广告", "32194000061", "7000", "15000", "350", "600"},
-            {"65", "5491239561962900", "gdt", "65", "插屏广告", "7208457110579137", "7000", "15000", "350", "420"},
-            {"65", "5491239561962900", "gdt", "65", "插屏广告", "7238452140874155", "7000", "15000", "350", "420"},
-            {"65", "5491239561962900", "gdt", "65", "插屏广告", "7238757190673126", "7000", "15000", "350", "420"},
-            {"65", "5491239561962900", "kuaishou", "65", "插屏广告", "32194000066", "5000", "15000", "300", "450"},
-            {"65", "5491239561962900", "kuaishou", "65", "插屏广告", "32194000064", "5000", "15000", "300", "450"},
+            {"65", "5491239561962900", "gromore", "65", "插屏广告", "103956914", "2500", "9000"},
+            {"65", "5491239561962900", "gdt", "65", "插屏广告", "6268450130179263", "5000", "15000"},
+            {"65", "5491239561962900", "gdt", "65", "插屏广告", "5278953120871194", "5000", "10000"},
+            {"65", "5491239561962900", "gromore", "65", "插屏广告", "103955254", "5000", "10000"},
+            {"65", "5491239561962900", "baidu", "65", "插屏广告", "19233026", "2500", "10000"},
+            {"65", "5491239561962900", "kuaishou", "65", "插屏广告", "32194000061", "2500", "10000"},
+            {"65", "5491239561962900", "gdt", "65", "插屏广告", "7208457110579137", "2500", "10000"},
+            {"65", "5491239561962900", "gdt", "65", "插屏广告", "7238452140874155", "2500", "10000"},
+            {"65", "5491239561962900", "gdt", "65", "插屏广告", "7238757190673126", "2500", "10000"},
+            {"65", "5491239561962900", "kuaishou", "65", "插屏广告", "32194000066", "5000", "10000"},
+            {"65", "5491239561962900", "kuaishou", "65", "插屏广告", "32194000064", "5000", "10000"},
         };
 
         // 按类型分组
@@ -225,25 +225,42 @@ public class AdRewardBot {
             }
         }
 
-        // 固定1条插屏 + 随机1条信息流或Banner（信息流概率70%）
-        String[][] selected = new String[2][];
-        selected[0] = interPool.get(random.nextInt(interPool.size()));
-        if (random.nextDouble() < 0.7) {
-            selected[1] = feedPool.get(random.nextInt(feedPool.size()));
-        } else {
-            selected[1] = bannerPool.get(random.nextInt(bannerPool.size()));
+        // 先随机总条数
+        int[] totalChoices = {2, 3, 4};
+        int total = totalChoices[random.nextInt(totalChoices.length)];
+        // 插屏条数：总数>2时随机1-2条，否则固定1条
+        int interCount = total > 2 ? (1 + random.nextInt(2)) : 1;
+        int extraCount = total - interCount;
+
+        // 选插屏
+        java.util.List<String[]> selected = new java.util.ArrayList<>();
+        for (int e = 0; e < interCount; e++) {
+            selected.add(interPool.get(random.nextInt(interPool.size())));
+        }
+        // 补充信息流或Banner（信息流概率65%）
+        for (int e = 0; e < extraCount; e++) {
+            if (random.nextDouble() < 0.65) {
+                selected.add(feedPool.get(random.nextInt(feedPool.size())));
+            } else {
+                selected.add(bannerPool.get(random.nextInt(bannerPool.size())));
+            }
         }
 
-        JSONArray details = new JSONArray();
-        StringBuilder logMsg = new StringBuilder("[Bot] 📊 生成 2 条广告:");
+        java.util.Collections.shuffle(selected, random);
 
-        for (int i = 0; i < selected.length; i++) {
-            String[] ad = selected[i];
+        JSONArray details = new JSONArray();
+        StringBuilder logMsg = new StringBuilder("[Bot] 📊 生成 " + selected.size() + " 条广告:");
+
+        for (int i = 0; i < selected.size(); i++) {
+            String[] ad = selected.get(i);
             int ecpmMin = Integer.parseInt(ad[6]);
             int ecpmMax = Integer.parseInt(ad[7]);
             int ecpm = randomInt(ecpmMin, ecpmMax);
-            double realMoney = ecpm / 100000.0;  // 真实公式：ecpm / 100000
-            int amount = (int) (realMoney * 0.60 * 10000);  // amount = real_money * reward_rate * exchange_rate
+            double realMoney = ecpm / 100000.0;
+            int amount = (int) (realMoney * 0.60 * 10000);
+
+            // real_money 格式：Java Double.toString() 自动去尾零和科学计数法
+            String realMoneyStr = String.valueOf(realMoney);
 
             JSONObject item = new JSONObject();
             item.put("admodel_id", ad[0]);
@@ -253,13 +270,13 @@ public class AdRewardBot {
             item.put("adtype_name", ad[4]);
             item.put("amount", String.valueOf(amount));
             item.put("appUserId", "");
-            item.put("displayed_at", String.valueOf(nowMs + i * randomInt(5000, 15000)));
+            item.put("displayed_at", String.valueOf(nowMs + i * randomInt(1000, 5000)));
             item.put("ecpm", String.valueOf(ecpm));
             item.put("exchange_rate", "10000");
             item.put("extraInfo", "");
             item.put("loadId", UUID.randomUUID().toString());
             item.put("network_placement_id", ad[5]);
-            item.put("real_money", realMoney >= 0.001 ? String.format("%.10f", realMoney) : String.format("%.1E", realMoney));
+            item.put("real_money", realMoneyStr);
             item.put("reward_rate", "0.60");
             details.put(item);
 
