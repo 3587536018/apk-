@@ -520,12 +520,15 @@ public class MainHook implements IXposedHookLoadPackage {
         }
     }
     // ======================================================================
-    // Hook 3: Block WMRewardAd.show() (no video) but trigger Sigmob SDK's
-    // internal onVideoComplete chain which fires rtbcallback + reward
+    // Hook 3: Let WMRewardAd.show() proceed (ad loads fully), then when
+    // onVideoAdPlayStart fires, immediately trigger reward callbacks + close
     // ======================================================================
     private void hookSigmobAdActivity(ClassLoader cl) {
         try {
             Class<?> wmRewardAdCls = XposedHelpers.findClass("com.windmill.sdk.reward.WMRewardAd", cl);
+            Class<?> adInfoCls = XposedHelpers.findClass("com.windmill.sdk.models.AdInfo", cl);
+
+            // Hook show(): 让广告正常加载，但记录 wmRewardAd 实例，透明化窗口
             XposedHelpers.findAndHookMethod(wmRewardAdCls, "show",
                     Activity.class, java.util.HashMap.class,
                     new XC_MethodHook() {
@@ -533,92 +536,75 @@ public class MainHook implements IXposedHookLoadPackage {
                         protected void beforeHookedMethod(MethodHookParam param) {
                             if (!skipAdEnabled) {
                                 LogServer.log("[Skip] 跳过广告已关闭，正常播放视频");
-                                return; // Let video play normally
+                                return;
                             }
-                            LogServer.log("[Skip] ★ WMRewardAd.show() intercepted!");
-                            final Object wmRewardAd = param.thisObject;
-                            param.setResult(true); // Block video
+                            LogServer.log("[Skip] ★ WMRewardAd.show() → 允许加载，准备快速关闭");
+                            // 不阻止 show()，让广告正常加载
+                        }
+                    });
 
+            // Hook onVideoAdPlayStart(): 广告真正开始播放后，立即触发奖励回调 + 关闭
+            XposedHelpers.findAndHookMethod(wmRewardAdCls, "onVideoAdPlayStart",
+                    adInfoCls, boolean.class,
+                    new XC_MethodHook() {
+                        @Override
+                        protected void afterHookedMethod(MethodHookParam param) {
+                            if (!skipAdEnabled) return;
+
+                            final Object wmRewardAd = param.thisObject;
+                            final Object adInfo = param.args[0];
+                            LogServer.log("[Skip] ★ 广告已加载播放，开始快速完成奖励...");
+
+                            // 延迟 1 秒后触发奖励（让 SDK 内部初始化完成）
                             h().postDelayed(() -> {
                                 try {
                                     Object controller = XposedHelpers.getObjectField(wmRewardAd, "controller");
-                                    if (controller == null) { LogServer.log("[Skip] controller null"); return; }
 
-                                    Object adInfo = null;
-                                    try { adInfo = XposedHelpers.callMethod(controller, "d"); } catch (Throwable ignored) {}
-
-                                    // Fire onVideoAdPlayStart
-                                    if (adInfo != null) {
-                                        XposedHelpers.callMethod(wmRewardAd, "onVideoAdPlayStart", adInfo, false);
-                                        LogServer.log("[Skip] Fired onVideoAdPlayStart");
-                                    }
-
-                                    // Use controller (s extends k) to trigger rtbcallback reward
-                                    // SDK's own s.b(p, aVar, adapter) does this - we replicate it
-                                    try {
-                                        // Get current strategy aVar from controller.f27669t (parent class k)
-                                        Object aVar = null;
-                                        for (java.lang.reflect.Field f : controller.getClass().getSuperclass().getDeclaredFields()) {
-                                            f.setAccessible(true);
-                                            Object val = f.get(controller);
-                                            if (val != null && val.getClass().getName().equals("com.windmill.sdk.strategy.a")) {
-                                                aVar = val;
-                                                LogServer.log("[Skip] Found aVar in: " + f.getName() + " type=" + val.getClass().getName());
-                                                break;
-                                            }
-                                        }
-                                        // Also try f27653d list if f27669t is null
-                                        if (aVar == null) {
+                                    // ---- 发送 rtbcallback 给 Sigmob（与之前逻辑一致） ----
+                                    if (controller != null) {
+                                        try {
+                                            Object aVar = null;
                                             for (java.lang.reflect.Field f : controller.getClass().getSuperclass().getDeclaredFields()) {
                                                 f.setAccessible(true);
                                                 Object val = f.get(controller);
-                                                if (val instanceof java.util.List) {
-                                                    java.util.List<?> list = (java.util.List<?>) val;
-                                                    if (!list.isEmpty() && list.get(0).getClass().getName().equals("com.windmill.sdk.strategy.a")) {
-                                                        aVar = list.get(0);
-                                                        LogServer.log("[Skip] Found aVar from list field: " + f.getName());
-                                                        break;
+                                                if (val != null && val.getClass().getName().equals("com.windmill.sdk.strategy.a")) {
+                                                    aVar = val;
+                                                    break;
+                                                }
+                                            }
+                                            if (aVar == null) {
+                                                for (java.lang.reflect.Field f : controller.getClass().getSuperclass().getDeclaredFields()) {
+                                                    f.setAccessible(true);
+                                                    Object val = f.get(controller);
+                                                    if (val instanceof java.util.List) {
+                                                        java.util.List<?> list = (java.util.List<?>) val;
+                                                        if (!list.isEmpty() && list.get(0).getClass().getName().equals("com.windmill.sdk.strategy.a")) {
+                                                            aVar = list.get(0);
+                                                            break;
+                                                        }
                                                     }
                                                 }
                                             }
-                                        }
-                                        if (aVar != null) {
-                                            // Call controller.i(aVar) to build reward JSON (private method)
-                                            java.lang.reflect.Method iMethod = controller.getClass().getDeclaredMethod("i", aVar.getClass());
-                                            iMethod.setAccessible(true);
-                                            org.json.JSONObject rewardJson = (org.json.JSONObject) iMethod.invoke(controller, aVar);
+                                            if (aVar != null) {
+                                                java.lang.reflect.Method iMethod = controller.getClass().getDeclaredMethod("i", aVar.getClass());
+                                                iMethod.setAccessible(true);
+                                                org.json.JSONObject rewardJson = (org.json.JSONObject) iMethod.invoke(controller, aVar);
+                                                rewardJson.put("networkAdType", "1");
+                                                rewardJson.put("thirdTransId", java.util.UUID.randomUUID().toString().replace("-", ""));
+                                                rewardJson.put("rewardTimestamp", String.valueOf(System.currentTimeMillis()));
 
-                                            // Get adapter for thirdTransId
-                                            String thirdTransId = java.util.UUID.randomUUID().toString().replace("-", "");
-                                            rewardJson.put("networkAdType", "1");
-                                            rewardJson.put("thirdTransId", thirdTransId);
-                                            rewardJson.put("rewardTimestamp", String.valueOf(System.currentTimeMillis()));
+                                                String rvUrl = (String) XposedHelpers.callMethod(aVar, "ag");
+                                                if (rvUrl != null && !rvUrl.isEmpty()) {
+                                                    String queryStr = "";
+                                                    try {
+                                                        Class<?> sdkCfgCls = XposedHelpers.findClass("com.windmill.sdk.strategy.WMSdkConfig", cl);
+                                                        queryStr = (String) XposedHelpers.callStaticMethod(sdkCfgCls, "getServerQueryString");
+                                                    } catch (Throwable ignored) {
+                                                        queryStr = "appId=72850&sdkVersion=4.7.0";
+                                                    }
+                                                    String fullUrl = rvUrl + (rvUrl.contains("?") ? "&" : "?") + queryStr;
 
-                                            // Get rv_callback_url from aVar.ag()
-                                            String rvUrl = (String) XposedHelpers.callMethod(aVar, "ag");
-                                            LogServer.log("[Skip] rv_callback_url: " + (rvUrl != null ? rvUrl.substring(0, Math.min(60, rvUrl.length())) + "..." : "null"));
-                                            LogServer.log("[Skip] reward JSON keys: " + rewardJson.toString().substring(0, Math.min(120, rewardJson.toString().length())) + "...");
-
-                                            if (rvUrl != null && !rvUrl.isEmpty()) {
-                                                // Build full URL exactly like s.b(): rv_url + ?/& + WMSdkConfig.getServerQueryString()
-                                                String queryStr = "";
-                                                try {
-                                                    Class<?> sdkCfgCls = XposedHelpers.findClass("com.windmill.sdk.strategy.WMSdkConfig", cl);
-                                                    queryStr = (String) XposedHelpers.callStaticMethod(sdkCfgCls, "getServerQueryString");
-                                                } catch (Throwable ignored) {
-                                                    queryStr = "appId=72850&sdkVersion=4.7.0";
-                                                }
-                                                final String fullUrl = rvUrl + (rvUrl.contains("?") ? "&" : "?") + queryStr;
-                                                final String jsonBody = rewardJson.toString();
-
-                                                // Get WindMillAdRequest from controller.f27664o (parent class k)
-                                                Object windMillAdReq = null;
-                                                try {
-                                                    java.lang.reflect.Field reqField = controller.getClass().getSuperclass().getDeclaredField("f27664o");
-                                                    reqField.setAccessible(true);
-                                                    windMillAdReq = reqField.get(controller);
-                                                } catch (Throwable ignored) {
-                                                    // Try scanning for WindMillAdRequest
+                                                    Object windMillAdReq = null;
                                                     for (java.lang.reflect.Field f : controller.getClass().getSuperclass().getDeclaredFields()) {
                                                         f.setAccessible(true);
                                                         try {
@@ -629,82 +615,93 @@ public class MainHook implements IXposedHookLoadPackage {
                                                             }
                                                         } catch (Throwable ig) {}
                                                     }
+
+                                                    Class<?> jCls = XposedHelpers.findClass("com.windmill.sdk.strategy.j", cl);
+                                                    Class<?> jCallbackCls = XposedHelpers.findClass("com.windmill.sdk.strategy.j$a", cl);
+                                                    Object callback = java.lang.reflect.Proxy.newProxyInstance(cl,
+                                                            new Class<?>[]{jCallbackCls},
+                                                            (proxy, method, args) -> {
+                                                                if (method.getName().equals("a") && (args == null || args.length == 0)) {
+                                                                    LogServer.log("[Skip] ✅ rtbcallback reward SUCCESS");
+                                                                } else if (method.getName().equals("a") && args != null && args.length > 0) {
+                                                                    LogServer.log("[Skip] ✗ rtbcallback reward ERROR: " + args[0]);
+                                                                }
+                                                                return null;
+                                                            });
+                                                    XposedHelpers.callStaticMethod(jCls, "a", fullUrl, rewardJson.toString(), 2, "", windMillAdReq, callback);
+                                                    LogServer.log("[Skip] rtbcallback 已发送");
                                                 }
-
-                                                // Call j.a(url, jsonStr, 2, pVar_c, windMillAdRequest, callback)
-                                                // This is the SDK's own method that encrypts with AES + adds agn nonce header
-                                                Class<?> jCls = XposedHelpers.findClass("com.windmill.sdk.strategy.j", cl);
-                                                Class<?> jCallbackCls = XposedHelpers.findClass("com.windmill.sdk.strategy.j$a", cl);
-
-                                                // Create a simple callback to log result
-                                                Object callback = java.lang.reflect.Proxy.newProxyInstance(
-                                                        cl,
-                                                        new Class<?>[]{jCallbackCls},
-                                                        (proxy, method, args) -> {
-                                                            if (method.getName().equals("a") && (args == null || args.length == 0)) {
-                                                                LogServer.log("[Skip] ✅ rtbcallback reward SUCCESS (SDK j.a callback)");
-                                                            } else if (method.getName().equals("a") && args != null && args.length > 0) {
-                                                                LogServer.log("[Skip] ✗ rtbcallback reward ERROR: " + args[0]);
-                                                            }
-                                                            return null;
-                                                        });
-
-                                                LogServer.log("[Skip] Calling j.a() with encrypted body → " + fullUrl);
-                                                XposedHelpers.callStaticMethod(jCls, "a",
-                                                        fullUrl,           // URL
-                                                        jsonBody,          // JSON body (j.a will AES-encrypt it)
-                                                        2,                 // type
-                                                        "",                // pVar.c() token
-                                                        windMillAdReq,     // WindMillAdRequest
-                                                        callback);         // j.a callback
-                                                LogServer.log("[Skip] j.a() called — reward request queued");
-                                            } else {
-                                                LogServer.log("[Skip] rv_callback_url is empty — no rtbcallback to fire");
-                                            }
-                                        } else {
-                                            LogServer.log("[Skip] No aVar found in controller — cannot send rtbcallback");
-                                        }
-                                    } catch (Throwable t) {
-                                        LogServer.log("[Skip] rtbcallback reward FAIL: " + t.getMessage());
-                                    }
-
-                                    // Fire Windmill-level reward + close callbacks
-                                    final Object fAdInfo = adInfo;
-                                    h().postDelayed(() -> {
-                                        try {
-                                            if (fAdInfo != null) {
-                                                Class<?> riCls = XposedHelpers.findClass("com.windmill.sdk.reward.WMRewardInfo", cl);
-                                                Object ri = riCls.getConstructor(boolean.class, String.class, String.class, String.class)
-                                                        .newInstance(true, java.util.UUID.randomUUID().toString(), "", "");
-                                                XposedHelpers.callMethod(wmRewardAd, "onVideoAdReward", fAdInfo, ri);
-                                                LogServer.log("[Skip] Fired WM onVideoAdReward");
-                                                h().postDelayed(() -> {
-                                                    try {
-                                                        XposedHelpers.callMethod(wmRewardAd, "onVideoAdPlayEnd", fAdInfo);
-                                                        h().postDelayed(() -> {
-                                                            try {
-                                                                XposedHelpers.callMethod(wmRewardAd, "onVideoAdClosed", fAdInfo);
-                                                                LogServer.log("[Skip] Fired WM close");
-                                                            } catch (Throwable ignored) {}
-                                                        }, 300);
-                                                    } catch (Throwable ignored) {}
-                                                }, 300);
                                             }
                                         } catch (Throwable t) {
-                                            LogServer.log("[Skip] WM reward fail: " + t.getMessage());
+                                            LogServer.log("[Skip] rtbcallback 异常: " + t.getMessage());
                                         }
-                                    }, 1500);
+                                    }
+
+                                    // ---- 触发 WM 层奖励回调 ----
+                                    Class<?> riCls = XposedHelpers.findClass("com.windmill.sdk.reward.WMRewardInfo", cl);
+                                    Object ri = riCls.getConstructor(boolean.class, String.class, String.class, String.class)
+                                            .newInstance(true, java.util.UUID.randomUUID().toString(), "", "");
+                                    XposedHelpers.callMethod(wmRewardAd, "onVideoAdReward", adInfo, ri);
+                                    LogServer.log("[Skip] ✓ onVideoAdReward 已触发");
+
+                                    // ---- 300ms 后触发播放结束 ----
+                                    h().postDelayed(() -> {
+                                        try {
+                                            XposedHelpers.callMethod(wmRewardAd, "onVideoAdPlayEnd", adInfo);
+                                            LogServer.log("[Skip] ✓ onVideoAdPlayEnd 已触发");
+
+                                            // ---- 300ms 后关闭广告并触发 close 回调 ----
+                                            h().postDelayed(() -> {
+                                                try {
+                                                    XposedHelpers.callMethod(wmRewardAd, "onVideoAdClosed", adInfo);
+                                                    LogServer.log("[Skip] ✓ onVideoAdClosed 已触发");
+
+                                                    // 关闭所有 SDK 广告 Activity
+                                                    closeAdActivities();
+                                                } catch (Throwable ignored) {}
+                                            }, 300);
+                                        } catch (Throwable ignored) {}
+                                    }, 300);
                                 } catch (Throwable t) {
-                                    LogServer.log("[Skip] Full chain FAIL: " + t.getMessage());
+                                    LogServer.log("[Skip] 快速完成异常: " + t.getMessage());
                                 }
-                            }, 200);
+                            }, 1000);
                         }
                     });
-            LogServer.log("[Hook] hookWMRewardAdShow (skip + rtbcallback) registered OK");
+
+            LogServer.log("[Hook] hookWMRewardAdShow (加载+快速关闭) registered OK");
             XposedBridge.log("QukanHook [Hook] hookWMRewardAdShow OK");
         } catch (Throwable t) {
             LogServer.log("[Hook] hookWMRewardAdShow FAIL: " + t.getMessage());
             XposedBridge.log("QukanHook [Hook] hookWMRewardAdShow FAIL: " + t);
+        }
+    }
+
+    /**
+     * 关闭所有 SDK 广告 Activity（Windmill/Sigmob/CZHJ）
+     */
+    private void closeAdActivities() {
+        try {
+            // 通过 ActivityThread 获取所有运行中的 Activity
+            Object activityThread = XposedHelpers.callStaticMethod(
+                    XposedHelpers.findClass("android.app.ActivityThread", null),
+                    "currentActivityThread");
+            java.util.Map<?, ?> activities = (java.util.Map<?, ?>)
+                    XposedHelpers.getObjectField(activityThread, "mActivities");
+            if (activities == null) return;
+            for (Object record : activities.values()) {
+                Activity act = (Activity) XposedHelpers.getObjectField(record, "activity");
+                if (act != null && !act.isFinishing()) {
+                    String name = act.getClass().getName();
+                    if (name.startsWith("com.windmill") || name.startsWith("com.czhj")
+                            || name.startsWith("com.sigmob")) {
+                        LogServer.log("[Skip] 关闭广告 Activity: " + name);
+                        act.finish();
+                    }
+                }
+            }
+        } catch (Throwable t) {
+            LogServer.log("[Skip] 关闭广告 Activity 异常: " + t.getMessage());
         }
     }
 
