@@ -660,34 +660,64 @@ public class MainHook implements IXposedHookLoadPackage {
     }
     /**
      * 通过 SDK 内部方法关闭插屏广告
-     * 调用 onVideoAdClosed → 触发 listener.onInterstitialAdClosed → App 状态恢复
-     * 然后 destroy() → controller.m69301a(true) → adapter.destroy() → UI 清理
+     * 核心路径：controller.f50279F (C15033a) → f49959i (WeakReference<Activity>) → finish()
+     * 这是 SDK 自己的自动关闭定时器使用的完全相同的路径
      */
     private void closeInterstitialViaSdk(Object wmInterstitialAd, Object adInfo) {
         try {
-            // 记录当前状态
-            Object adOutStatus = XposedHelpers.getObjectField(wmInterstitialAd, "adOutStatus");
             Object controller = XposedHelpers.getObjectField(wmInterstitialAd, "controller");
             Object listener = XposedHelpers.getObjectField(wmInterstitialAd, "wmInterstitialAdListener");
-            LogServer.log("[AdAuto] closeViaSdk 开始: adOutStatus=" + adOutStatus
-                    + " controller=" + (controller != null ? "存在" : "null")
+            LogServer.log("[AdAuto] closeViaSdk 开始: controller=" + (controller != null ? "存在" : "null")
                     + " listener=" + (listener != null ? listener.getClass().getSimpleName() : "null"));
 
-            // 1. 触发关闭回调链（通知 App 广告已关闭）
-            XposedHelpers.callMethod(wmInterstitialAd, "onVideoAdClosed", adInfo);
-            LogServer.log("[AdAuto] ✓ 步骤1完成: onVideoAdClosed 已调用");
+            // 步骤1：通过 controller 的 C15033a 获取广告 Activity 并 finish
+            boolean actFinished = false;
+            if (controller != null) {
+                try {
+                    // f50279F 是 C15033a 实例（自动关闭定时器）
+                    Object autoCloseTimer = XposedHelpers.getObjectField(controller, "f50279F");
+                    if (autoCloseTimer != null) {
+                        // f49959i 是 WeakReference<Activity>，指向广告 Activity
+                        Object weakRef = XposedHelpers.getObjectField(autoCloseTimer, "f49959i");
+                        if (weakRef != null) {
+                            Activity adActivity = (Activity) ((java.lang.ref.WeakReference<?>) weakRef).get();
+                            if (adActivity != null && !adActivity.isFinishing()) {
+                                String actName = adActivity.getClass().getName();
+                                LogServer.log("[AdAuto] ✓ 找到广告Activity: " + actName);
+                                adActivity.finish();
+                                actFinished = true;
+                                LogServer.log("[AdAuto] ✓ 广告Activity已finish");
+                            } else {
+                                LogServer.log("[AdAuto] 广告Activity为null或已finishing");
+                            }
+                        } else {
+                            LogServer.log("[AdAuto] autoCloseTimer.f49959i 为null");
+                        }
+                    } else {
+                        LogServer.log("[AdAuto] controller.f50279F 为null（非插屏类型或未设置）");
+                    }
+                } catch (Throwable t) {
+                    LogServer.log("[AdAuto] 获取广告Activity异常: " + t.getMessage());
+                }
+            }
 
-            // 2. 延迟 200ms 后调用 destroy 清理 UI
+            // 步骤2：触发关闭回调链（通知 App 广告已关闭）
+            XposedHelpers.callMethod(wmInterstitialAd, "onVideoAdClosed", adInfo);
+            LogServer.log("[AdAuto] ✓ onVideoAdClosed 已调用");
+
+            // 步骤3：destroy 清理 SDK 内部状态
             h().postDelayed(() -> {
                 try {
                     XposedHelpers.callMethod(wmInterstitialAd, "destroy");
-                    LogServer.log("[AdAuto] ✓ 步骤2完成: destroy 已调用");
+                    LogServer.log("[AdAuto] ✓ destroy 已调用");
                 } catch (Throwable t) {
                     LogServer.log("[AdAuto] destroy 异常: " + t.getMessage());
                 }
-                // 3. 兜底：关闭残留的广告 Activity
-                closeAdActivities();
-                LogServer.log("[AdAuto] ✓ 步骤3完成: closeAdActivities 已执行");
+                // 步骤4：兜底 - 遍历所有Activity关闭非App的
+                if (!actFinished) {
+                    closeAdActivities();
+                    LogServer.log("[AdAuto] ✓ closeAdActivities 兜底已执行");
+                }
             }, 200);
         } catch (Throwable t) {
             LogServer.log("[AdAuto] SDK关闭异常: " + t.getMessage());
@@ -986,26 +1016,32 @@ public class MainHook implements IXposedHookLoadPackage {
      */
     private void closeAdActivities() {
         try {
-            // 通过 ActivityThread 获取所有运行中的 Activity
             Object activityThread = XposedHelpers.callStaticMethod(
                     XposedHelpers.findClass("android.app.ActivityThread", null),
                     "currentActivityThread");
             java.util.Map<?, ?> activities = (java.util.Map<?, ?>)
                     XposedHelpers.getObjectField(activityThread, "mActivities");
             if (activities == null) return;
+
+            String appPkg = "top.dffhq.qwsh"; // 主 App 包名
+            int total = activities.size();
+            LogServer.log("[CloseAct] 当前Activity数量: " + total);
+
             for (Object record : activities.values()) {
                 Activity act = (Activity) XposedHelpers.getObjectField(record, "activity");
                 if (act != null && !act.isFinishing()) {
                     String name = act.getClass().getName();
-                    if (name.startsWith("com.windmill") || name.startsWith("com.czhj")
-                            || name.startsWith("com.sigmob")) {
-                        LogServer.log("[Skip] 关闭广告 Activity: " + name);
+                    // 保留主 App 的 Activity，关闭所有 SDK 广告 Activity
+                    if (!name.startsWith(appPkg) && !name.startsWith("com.example.advertisinglibrary")) {
+                        LogServer.log("[CloseAct] 关闭广告 Activity: " + name);
                         act.finish();
+                    } else {
+                        LogServer.log("[CloseAct] 保留 App Activity: " + name);
                     }
                 }
             }
         } catch (Throwable t) {
-            LogServer.log("[Skip] 关闭广告 Activity 异常: " + t.getMessage());
+            LogServer.log("[CloseAct] 异常: " + t.getMessage());
         }
     }
 
