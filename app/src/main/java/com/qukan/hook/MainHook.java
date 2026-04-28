@@ -236,9 +236,8 @@ public class MainHook implements IXposedHookLoadPackage {
         // --- 插屏广告：正常展示，几秒后自动关闭 ---
         try {
             Class<?> interstitialCls = XposedHelpers.findClass("com.windmill.sdk.interstitial.WMInterstitialAd", cl);
-            Class<?> adInfoCls = XposedHelpers.findClass("com.windmill.sdk.models.AdInfo", cl);
 
-            // Hook show()：百度插屏直接禁止展示
+            // Hook show()：拦截所有插屏广告，阻止展示，伪造完整回调链
             XposedHelpers.findAndHookMethod(interstitialCls, "show",
                     Activity.class, java.util.HashMap.class,
                     new XC_MethodHook() {
@@ -248,72 +247,46 @@ public class MainHook implements IXposedHookLoadPackage {
                             try {
                                 Object adInfo = XposedHelpers.callMethod(param.thisObject, "getAdInfo");
                                 String networkName = "";
-                                String networkId = "";
-                                String ecpm = "";
                                 if (adInfo != null) {
                                     try { networkName = (String) XposedHelpers.callMethod(adInfo, "getNetworkName"); } catch (Throwable ignored) {}
-                                    try { networkId = String.valueOf(XposedHelpers.callMethod(adInfo, "getNetworkId")); } catch (Throwable ignored) {}
-                                    try { ecpm = (String) XposedHelpers.callMethod(adInfo, "geteCPM"); } catch (Throwable ignored) {}
                                 }
-                                Object adOutStatus = XposedHelpers.getObjectField(param.thisObject, "adOutStatus");
-                                LogServer.log("[AdAuto] show() 被调用: network=" + networkName
-                                        + " networkId=" + networkId + " ecpm=" + ecpm
-                                        + " adOutStatus=" + adOutStatus);
+                                LogServer.log("[AdBlock] ⛔ 插屏广告被拦截: network=" + networkName);
 
-                                if ("baidu".equalsIgnoreCase(networkName)) {
-                                    LogServer.log("[AdAuto] ⛔ 百度插屏被拦截，禁止展示");
-                                    param.setResult(false);
+                                // 阻止 show() 执行 — 广告不会展示
+                                param.setResult(false);
+
+                                // 获取 listener，伪造完整的广告生命周期回调
+                                Object listener = XposedHelpers.getObjectField(param.thisObject, "wmInterstitialAdListener");
+                                if (listener != null && adInfo != null) {
+                                    // 1. 通知 App 广告开始播放
                                     try {
-                                        Object listener = XposedHelpers.getObjectField(param.thisObject, "wmInterstitialAdListener");
-                                        if (listener != null) {
-                                            XposedHelpers.callMethod(listener, "onInterstitialAdClosed", adInfo);
-                                            LogServer.log("[AdAuto] ✓ 已触发 onInterstitialAdClosed 回调");
-                                        }
+                                        XposedHelpers.callMethod(listener, "onInterstitialAdPlayStart", adInfo);
+                                        LogServer.log("[AdBlock] ✓ 回调 onInterstitialAdPlayStart");
                                     } catch (Throwable ignored) {}
+
+                                    // 2. 短暂延迟后通知 App 广告已关闭
+                                    final Object finalListener = listener;
+                                    final Object finalAdInfo = adInfo;
+                                    h().postDelayed(() -> {
+                                        try {
+                                            XposedHelpers.callMethod(finalListener, "onInterstitialAdClosed", finalAdInfo);
+                                            LogServer.log("[AdBlock] ✓ 回调 onInterstitialAdClosed");
+                                        } catch (Throwable t) {
+                                            LogServer.log("[AdBlock] 回调异常: " + t.getMessage());
+                                        }
+                                    }, 300);
+                                } else {
+                                    LogServer.log("[AdBlock] ⚠ listener或adInfo为null，跳过回调");
                                 }
                             } catch (Throwable t) {
-                                LogServer.log("[AdAuto] show拦截异常: " + t.getMessage());
+                                LogServer.log("[AdBlock] 拦截异常: " + t.getMessage());
                             }
-                        }
-                    });
-
-            // Hook onVideoAdPlayStart：保存实例，延迟后通过 SDK 内部方法关闭
-            XposedHelpers.findAndHookMethod(interstitialCls, "onVideoAdPlayStart",
-                    adInfoCls, boolean.class,
-                    new XC_MethodHook() {
-                        @Override
-                        protected void afterHookedMethod(MethodHookParam param) {
-                            if (!blockNonRewardAds) return;
-                            final Object wmAd = param.thisObject; // WMInterstitialAd 实例
-                            final Object adInfo = param.args[0];  // AdInfo
-
-                            String networkName = "";
-                            try {
-                                networkName = (String) XposedHelpers.callMethod(adInfo, "getNetworkName");
-                            } catch (Throwable ignored) {}
-
-                            LogServer.log("[AdAuto] 插屏广告展示 network=" + networkName);
-
-                            // 百度如果漏过 show 拦截，立即关闭
-                            if ("baidu".equalsIgnoreCase(networkName)) {
-                                LogServer.log("[AdAuto] ⛔ 百度插屏漏过，立即关闭");
-                                h().postDelayed(() -> closeInterstitialViaSdk(wmAd, adInfo), 500);
-                                return;
-                            }
-
-                            // 所有插屏广告延迟 5 秒后通过 SDK 内部方法直接关闭
-                            // 不再依赖 UI 点击（clickAdCloseButton 找到的 View 不一定能真正关闭广告）
-                            final String finalNetworkName = networkName;
-                            h().postDelayed(() -> {
-                                LogServer.log("[AdAuto] 5秒到期，通过SDK方法关闭插屏 (" + finalNetworkName + ")");
-                                closeInterstitialViaSdk(wmAd, adInfo);
-                            }, 5000);
                         }
                     });
             hooked++;
-            LogServer.log("[AdAuto] 插屏广告自动关闭 Hook 注册成功");
+            LogServer.log("[AdBlock] 插屏广告拦截 Hook 注册成功");
         } catch (Throwable t) {
-            LogServer.log("[AdAuto] 插屏广告 Hook 失败: " + t.getMessage());
+            LogServer.log("[AdBlock] 插屏广告 Hook 失败: " + t.getMessage());
         }
 
         // --- 开屏广告：正常展示，几秒后自动关闭 ---
@@ -665,72 +638,6 @@ public class MainHook implements IXposedHookLoadPackage {
         } catch (Throwable t) {
             LogServer.log("[Hook] hookWMRewardAdShow FAIL: " + t.getMessage());
             XposedBridge.log("QukanHook [Hook] hookWMRewardAdShow FAIL: " + t);
-        }
-    }
-    /**
-     * 通过 SDK 内部方法关闭插屏广告
-     * 核心路径：controller.f50279F (C15033a) → f49959i (WeakReference<Activity>) → finish()
-     * 这是 SDK 自己的自动关闭定时器使用的完全相同的路径
-     */
-    private void closeInterstitialViaSdk(Object wmInterstitialAd, Object adInfo) {
-        try {
-            Object controller = XposedHelpers.getObjectField(wmInterstitialAd, "controller");
-            Object listener = XposedHelpers.getObjectField(wmInterstitialAd, "wmInterstitialAdListener");
-            LogServer.log("[AdAuto] closeViaSdk 开始: controller=" + (controller != null ? "存在" : "null")
-                    + " listener=" + (listener != null ? listener.getClass().getSimpleName() : "null"));
-
-            // 步骤1：通过 controller 的 C15033a 获取广告 Activity 并 finish
-            final boolean[] actFinished = {false};
-            if (controller != null) {
-                try {
-                    // f50279F 是 C15033a 实例（自动关闭定时器）
-                    Object autoCloseTimer = XposedHelpers.getObjectField(controller, "f50279F");
-                    if (autoCloseTimer != null) {
-                        // f49959i 是 WeakReference<Activity>，指向广告 Activity
-                        Object weakRef = XposedHelpers.getObjectField(autoCloseTimer, "f49959i");
-                        if (weakRef != null) {
-                            Activity adActivity = (Activity) ((java.lang.ref.WeakReference<?>) weakRef).get();
-                            if (adActivity != null && !adActivity.isFinishing()) {
-                                String actName = adActivity.getClass().getName();
-                                LogServer.log("[AdAuto] ✓ 找到广告Activity: " + actName);
-                                adActivity.finish();
-                                actFinished[0] = true;
-                                LogServer.log("[AdAuto] ✓ 广告Activity已finish");
-                            } else {
-                                LogServer.log("[AdAuto] 广告Activity为null或已finishing");
-                            }
-                        } else {
-                            LogServer.log("[AdAuto] autoCloseTimer.f49959i 为null");
-                        }
-                    } else {
-                        LogServer.log("[AdAuto] controller.f50279F 为null（非插屏类型或未设置）");
-                    }
-                } catch (Throwable t) {
-                    LogServer.log("[AdAuto] 获取广告Activity异常: " + t.getMessage());
-                }
-            }
-
-            // 步骤2：触发关闭回调链（通知 App 广告已关闭）
-            XposedHelpers.callMethod(wmInterstitialAd, "onVideoAdClosed", adInfo);
-            LogServer.log("[AdAuto] ✓ onVideoAdClosed 已调用");
-
-            // 步骤3：destroy 清理 SDK 内部状态
-            h().postDelayed(() -> {
-                try {
-                    XposedHelpers.callMethod(wmInterstitialAd, "destroy");
-                    LogServer.log("[AdAuto] ✓ destroy 已调用");
-                } catch (Throwable t) {
-                    LogServer.log("[AdAuto] destroy 异常: " + t.getMessage());
-                }
-                // 步骤4：兜底 - 遍历所有Activity关闭非App的
-                if (!actFinished[0]) {
-                    closeAdActivities();
-                    LogServer.log("[AdAuto] ✓ closeAdActivities 兜底已执行");
-                }
-            }, 200);
-        } catch (Throwable t) {
-            LogServer.log("[AdAuto] SDK关闭异常: " + t.getMessage());
-            closeAdActivities();
         }
     }
 
