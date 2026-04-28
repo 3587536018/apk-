@@ -671,7 +671,7 @@ public class MainHook implements IXposedHookLoadPackage {
                     + " listener=" + (listener != null ? listener.getClass().getSimpleName() : "null"));
 
             // 步骤1：通过 controller 的 C15033a 获取广告 Activity 并 finish
-            boolean actFinished = false;
+            final boolean[] actFinished = {false};
             if (controller != null) {
                 try {
                     // f50279F 是 C15033a 实例（自动关闭定时器）
@@ -685,7 +685,7 @@ public class MainHook implements IXposedHookLoadPackage {
                                 String actName = adActivity.getClass().getName();
                                 LogServer.log("[AdAuto] ✓ 找到广告Activity: " + actName);
                                 adActivity.finish();
-                                actFinished = true;
+                                actFinished[0] = true;
                                 LogServer.log("[AdAuto] ✓ 广告Activity已finish");
                             } else {
                                 LogServer.log("[AdAuto] 广告Activity为null或已finishing");
@@ -714,7 +714,7 @@ public class MainHook implements IXposedHookLoadPackage {
                     LogServer.log("[AdAuto] destroy 异常: " + t.getMessage());
                 }
                 // 步骤4：兜底 - 遍历所有Activity关闭非App的
-                if (!actFinished) {
+                if (!actFinished[0]) {
                     closeAdActivities();
                     LogServer.log("[AdAuto] ✓ closeAdActivities 兜底已执行");
                 }
