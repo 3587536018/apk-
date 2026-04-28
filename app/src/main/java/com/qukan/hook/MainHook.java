@@ -271,14 +271,15 @@ public class MainHook implements IXposedHookLoadPackage {
                         }
                     });
 
-            // Hook onVideoAdPlayStart：插屏展示后延迟自动关闭
+            // Hook onVideoAdPlayStart：保存实例，延迟后通过 SDK 内部方法关闭
             XposedHelpers.findAndHookMethod(interstitialCls, "onVideoAdPlayStart",
                     adInfoCls, boolean.class,
                     new XC_MethodHook() {
                         @Override
                         protected void afterHookedMethod(MethodHookParam param) {
                             if (!blockNonRewardAds) return;
-                            Object adInfo = param.args[0];
+                            final Object wmAd = param.thisObject; // WMInterstitialAd 实例
+                            final Object adInfo = param.args[0];  // AdInfo
 
                             String networkName = "";
                             try {
@@ -290,26 +291,24 @@ public class MainHook implements IXposedHookLoadPackage {
                             // 百度如果漏过 show 拦截，立即关闭
                             if ("baidu".equalsIgnoreCase(networkName)) {
                                 LogServer.log("[AdAuto] ⛔ 百度插屏漏过，立即关闭");
-                                h().postDelayed(() -> {
-                                    try {
-                                        boolean closed = clickAdCloseButton();
-                                        if (!closed) closeAdActivities();
-                                    } catch (Throwable ignored) {}
-                                }, 500);
+                                h().postDelayed(() -> closeInterstitialViaSdk(wmAd, adInfo), 500);
                                 return;
                             }
 
-                            // 其他广告延迟 5 秒关闭
+                            // 其他广告延迟 5 秒，先尝试 UI 关闭，失败则用 SDK 方法
+                            final String finalNetworkName = networkName;
                             h().postDelayed(() -> {
                                 try {
                                     boolean closed = clickAdCloseButton();
                                     if (closed) {
-                                        LogServer.log("[AdAuto] ✓ 已点击关闭按钮");
+                                        LogServer.log("[AdAuto] ✓ 已点击关闭按钮 (" + finalNetworkName + ")");
                                     } else {
-                                        LogServer.log("[AdAuto] ⚠ 未找到关闭按钮");
+                                        LogServer.log("[AdAuto] UI关闭失败，使用SDK方法关闭 (" + finalNetworkName + ")");
+                                        closeInterstitialViaSdk(wmAd, adInfo);
                                     }
                                 } catch (Throwable t) {
                                     LogServer.log("[AdAuto] 插屏自动关闭异常: " + t.getMessage());
+                                    closeInterstitialViaSdk(wmAd, adInfo);
                                 }
                             }, 5000);
                         }
@@ -662,8 +661,34 @@ public class MainHook implements IXposedHookLoadPackage {
             XposedBridge.log("QukanHook [Hook] hookWMRewardAdShow FAIL: " + t);
         }
     }
+    /**
+     * 通过 SDK 内部方法关闭插屏广告
+     * 调用 onVideoAdClosed → 触发 listener.onInterstitialAdClosed → App 状态恢复
+     * 然后 destroy() → controller.m69301a(true) → adapter.destroy() → UI 清理
+     */
+    private void closeInterstitialViaSdk(Object wmInterstitialAd, Object adInfo) {
+        try {
+            // 1. 触发关闭回调链（通知 App 广告已关闭）
+            XposedHelpers.callMethod(wmInterstitialAd, "onVideoAdClosed", adInfo);
+            LogServer.log("[AdAuto] ✓ 已触发 onVideoAdClosed 回调");
 
-
+            // 2. 延迟 200ms 后调用 destroy 清理 UI（让回调先执行完）
+            h().postDelayed(() -> {
+                try {
+                    XposedHelpers.callMethod(wmInterstitialAd, "destroy");
+                    LogServer.log("[AdAuto] ✓ 已调用 destroy 清理广告");
+                } catch (Throwable t) {
+                    LogServer.log("[AdAuto] destroy 异常: " + t.getMessage());
+                }
+                // 3. 兜底：关闭残留的广告 Activity
+                closeAdActivities();
+            }, 200);
+        } catch (Throwable t) {
+            LogServer.log("[AdAuto] SDK关闭异常: " + t.getMessage());
+            // 兜底
+            closeAdActivities();
+        }
+    }
 
     /**
      * 在非 Activity 的 Dialog/Popup 窗口中查找关闭按钮并点击
