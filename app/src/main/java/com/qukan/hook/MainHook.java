@@ -22,7 +22,6 @@ public class MainHook implements IXposedHookLoadPackage {
 
     private static MainHook instance;
     public static MainHook getInstance() { return instance; }
-    public WeakReference<Object> getFragmentRef() { return fragmentRef; }
 
     private static final String TARGET_PKG = "top.dffhq.qwsh";
 
@@ -31,7 +30,7 @@ public class MainHook implements IXposedHookLoadPackage {
     private static final long RETRY_DELAY_MS    = 10_000;
     private static final int  MAX_ERRORS        = 5;
 
-    // Lazy Handler - DO NOT initialize at field level, Looper may be null at class-load time
+    // 延迟初始化 Handler — 类加载时 Looper 可能为空
     private Handler handler;
     private Handler h() {
         if (handler == null) handler = new Handler(Looper.getMainLooper());
@@ -41,17 +40,18 @@ public class MainHook implements IXposedHookLoadPackage {
     private WeakReference<Activity> activityRef;
     private WeakReference<Object>   adManagerRef;
     private WeakReference<Object>   fragmentRef;   // RedPacketFragment instance
-    private Object                  adListener;    // strong ref — prevents GC of new g() instance
-    private Object                  lastAdInfo;    // AdInfo captured from onVideoAdLoadSuccess (has real loadId)
+    public WeakReference<Object> getFragmentRef() { return fragmentRef; }
+    private Object                  adListener;    // 强引用 — 防止 g() 实例被 GC
+    private Object                  lastAdInfo;    // 从 onVideoAdLoadSuccess 捕获的 AdInfo（含真实 loadId）
     private int     roundCount = 0;
     private int     errorCount = 0;
     private boolean running    = false;
-    private volatile Object lastWaterfall;  // Captured Waterfall object from V6 response
+    private volatile Object lastWaterfall;  // 从 V6 响应中捕获的 Waterfall 对象
 
-    // Toggle: skip ad video (true=skip, false=play normally)
+    // 开关: 跳过广告视频
     public static volatile boolean skipAdEnabled = true;
 
-    // Toggle: block non-reward ads (true=block banner/interstitial/splash/feed, false=allow all)
+    // 开关: 拦截非激励广告
     public static volatile boolean blockNonRewardAds = true;
 
     // Custom credentials for account replacement
@@ -102,7 +102,7 @@ public class MainHook implements IXposedHookLoadPackage {
     public void handleLoadPackage(XC_LoadPackage.LoadPackageParam lpparam) throws Throwable {
         if (!TARGET_PKG.equals(lpparam.packageName)) return;
         instance = this;
-        XposedBridge.log("QukanHook >>> loaded for: " + lpparam.packageName);
+        XposedBridge.log("QukanHook >>> 已加载: " + lpparam.packageName);
 
         ClassLoader cl = lpparam.classLoader;
 
@@ -141,7 +141,7 @@ public class MainHook implements IXposedHookLoadPackage {
                             customOaid = diskOaid;
                             customToken = sp.getString("token", null);
                             customUserJson = sp.getString("user_json", null);
-                            LogServer.log("[Config] Loaded persisted creds: OAID=" + customOaid);
+                            LogServer.log("[Config] 已加载持久化凭证: OAID=" + customOaid);
                         }
                         // 2. 如果仍然没有 Token，尝试从 App 的原生 SP 中读取
                         if (customToken == null || customToken.isEmpty()) {
@@ -168,17 +168,11 @@ public class MainHook implements IXposedHookLoadPackage {
         hookToast(cl);
         hookCustomCredentials(cl);
         hookDeviceFingerprint(cl);
-        hookBlockNonRewardAds(cl);    // 拦截插屏广告
+        hookBlockNonRewardAds(cl);
         hookAdManager(cl);
         hookShowLoadRewardVideo(cl);
-        hookRewardAdLoadSuccess(cl);
         hookRandomizeAdInfo(cl);
         hookSigmobAdActivity(cl);     // 跳过广告视频 + 快速触发奖励
-        hookAdWindowTransparent(cl);
-        hookRewardAdPlayStart(cl);
-        hookRewardAdReward(cl);
-        hookRewardAdPlayEnd(cl);
-        hookRewardAdClosed(cl);
         hookRewardAdErrors(cl);
         hookRedPacketReward(cl);
     }
@@ -220,29 +214,26 @@ public class MainHook implements IXposedHookLoadPackage {
                                 String ip   = LogServer.getLocalIp();
                                 int    port = LogServer.actualPort;
                                 Toast.makeText(activity,
-                                        "QukanHook v1.12 Active - http://" + ip + ":" + port,
+                                        "趣玩Hook已激活 - http://" + ip + ":" + port,
                                         Toast.LENGTH_LONG).show();
                             }
                         }
                     });
-            XposedBridge.log("QukanHook [Hook] Activity.onCreate OK");
+            XposedBridge.log("QukanHook [Hook] Activity.onCreate 注册成功");
         } catch (Throwable t) {
-            XposedBridge.log("QukanHook [Hook] Activity.onCreate FAIL: " + t);
+            XposedBridge.log("QukanHook [Hook] Activity.onCreate 注册失败: " + t);
         }
     }
 
     // ======================================================================
-    // Hook 0b: Block all non-reward ads (interstitial, banner, native feed, splash)
-    // Only reward video ads (WMRewardAd) are allowed through.
+    // Hook 0b: 拦截所有非激励广告（插屏/Banner/信息流/开屏）
+    // 仅允许奖励视频广告 (WMRewardAd) 通过
     // ======================================================================
     private void hookBlockNonRewardAds(ClassLoader cl) {
-        int hooked = 0;
-
-        // --- 插屏广告：正常展示，几秒后自动关闭 ---
+        // 拦截所有插屏广告：在 show() 阶段直接阻止展示，伪造完整回调链
         try {
             Class<?> interstitialCls = XposedHelpers.findClass("com.windmill.sdk.interstitial.WMInterstitialAd", cl);
 
-            // Hook show()：拦截所有插屏广告，阻止展示，伪造完整回调链
             XposedHelpers.findAndHookMethod(interstitialCls, "show",
                     Activity.class, java.util.HashMap.class,
                     new XC_MethodHook() {
@@ -251,54 +242,42 @@ public class MainHook implements IXposedHookLoadPackage {
                             if (!blockNonRewardAds) return;
                             try {
                                 Object adInfo = XposedHelpers.callMethod(param.thisObject, "getAdInfo");
-                                String networkName = "";
-                                if (adInfo != null) {
-                                    try { networkName = (String) XposedHelpers.callMethod(adInfo, "getNetworkName"); } catch (Throwable ignored) {}
-                                }
+                                String networkName = adInfo != null
+                                        ? (String) XposedHelpers.callMethod(adInfo, "getNetworkName") : "unknown";
                                 LogServer.log("[AdBlock] ⛔ 插屏广告被拦截: network=" + networkName);
 
-                                // 阻止 show() 执行 — 广告不会展示
+                                // 阻止 show() 执行
                                 param.setResult(false);
 
-                                // 获取 listener，伪造完整的广告生命周期回调
+                                // 伪造回调链，避免 App 卡死
                                 Object listener = XposedHelpers.getObjectField(param.thisObject, "wmInterstitialAdListener");
                                 if (listener != null && adInfo != null) {
-                                    // 1. 通知 App 广告开始播放
                                     try {
                                         XposedHelpers.callMethod(listener, "onInterstitialAdPlayStart", adInfo);
-                                        LogServer.log("[AdBlock] ✓ 回调 onInterstitialAdPlayStart");
                                     } catch (Throwable ignored) {}
-
-                                    // 2. 短暂延迟后通知 App 广告已关闭
-                                    final Object finalListener = listener;
-                                    final Object finalAdInfo = adInfo;
+                                    final Object fListener = listener;
+                                    final Object fAdInfo = adInfo;
                                     h().postDelayed(() -> {
                                         try {
-                                            XposedHelpers.callMethod(finalListener, "onInterstitialAdClosed", finalAdInfo);
-                                            LogServer.log("[AdBlock] ✓ 回调 onInterstitialAdClosed");
-                                        } catch (Throwable t) {
-                                            LogServer.log("[AdBlock] 回调异常: " + t.getMessage());
-                                        }
+                                            XposedHelpers.callMethod(fListener, "onInterstitialAdClosed", fAdInfo);
+                                            LogServer.log("[AdBlock] ✓ 回调链完成 (PlayStart→Closed)");
+                                        } catch (Throwable ignored) {}
                                     }, 300);
-                                } else {
-                                    LogServer.log("[AdBlock] ⚠ listener或adInfo为null，跳过回调");
                                 }
                             } catch (Throwable t) {
                                 LogServer.log("[AdBlock] 拦截异常: " + t.getMessage());
                             }
                         }
                     });
-            hooked++;
-            LogServer.log("[AdBlock] 插屏广告拦截 Hook 注册成功");
+            LogServer.log("[AdBlock] ★ 插屏广告拦截 Hook 注册成功");
         } catch (Throwable t) {
             LogServer.log("[AdBlock] 插屏广告 Hook 失败: " + t.getMessage());
         }
-        LogServer.log("[AdBlock] ★ 插屏广告拦截初始化完成");
-        XposedBridge.log("QukanHook [AdBlock] Registered " + hooked + " hooks");
     }
 
+
     // ======================================================================
-    // Hook 1: l.u(Activity, WMRewardAdListener) — capture Activity + AdManager + Listener
+    // Hook 1: l.u(Activity, WMRewardAdListener) — 捕获引用 — 捕获 Activity + AdManager + 监听器
     // ======================================================================
     private void hookAdManager(ClassLoader cl) {
         try {
@@ -312,18 +291,18 @@ public class MainHook implements IXposedHookLoadPackage {
                             activityRef   = new WeakReference<>((Activity) param.args[0]);
                             adManagerRef  = new WeakReference<>(param.thisObject);
                             adListener    = param.args[1]; // strong ref — keep g() alive
-                            LogServer.log("[AdMgr] Captured Activity + l + WMRewardAdListener");
+                            LogServer.log("[AdMgr] 已捕获 Activity + AdManager + 广告监听器");
                         }
                     });
             XposedBridge.log("QukanHook [Hook] l.u OK");
         } catch (Throwable t) {
-            XposedBridge.log("QukanHook [Hook] l.u FAIL: " + t);
+            XposedBridge.log("QukanHook [Hook] l.u 注册失败: " + t);
         }
     }
 
     // ======================================================================
-    // Hook 1b: RedPacketFragment.showLoadRewardVideo() & onResume — capture fragment instance
-    // This is the real entry point for triggering a reward ad in RedPacketFragment.
+    // Hook 1b: RedPacketFragment 实例捕获 — 捕获 Fragment 实例
+    // 红包页面触发广告的真实入口
     // ======================================================================
     private void hookShowLoadRewardVideo(ClassLoader cl) {
         try {
@@ -334,11 +313,11 @@ public class MainHook implements IXposedHookLoadPackage {
                         @Override
                         protected void beforeHookedMethod(MethodHookParam param) {
                             fragmentRef = new WeakReference<>(param.thisObject);
-                            LogServer.log("[Fragment] RedPacketFragment captured in onResume");
+                            LogServer.log("[Fragment] 已捕获 RedPacketFragment (onResume)");
                         }
                     });
         } catch (Throwable t) {
-            XposedBridge.log("QukanHook [Hook] RedPacketFragment.onResume FAIL: " + t);
+            XposedBridge.log("QukanHook [Hook] RedPacketFragment.onResume 注册失败: " + t);
         }
 
         try {
@@ -349,88 +328,57 @@ public class MainHook implements IXposedHookLoadPackage {
                         @Override
                         protected void beforeHookedMethod(MethodHookParam param) {
                             fragmentRef = new WeakReference<>(param.thisObject);
-                            LogServer.log("[Fragment] RedPacketFragment captured");
+                            LogServer.log("[Fragment] 已捕获 RedPacketFragment");
                         }
                     });
-            XposedBridge.log("QukanHook [Hook] showLoadRewardVideo OK");
+            XposedBridge.log("QukanHook [Hook] showLoadRewardVideo 注册成功");
         } catch (Throwable t) {
-            XposedBridge.log("QukanHook [Hook] showLoadRewardVideo FAIL: " + t);
+            XposedBridge.log("QukanHook [Hook] showLoadRewardVideo 注册失败: " + t);
         }
     }
 
-    // ======================================================================
-    // Hook 2: WMRewardAd.onVideoAdLoadSuccess
-    // ======================================================================
-    private void hookRewardAdLoadSuccess(ClassLoader cl) {
-        try {
-            Class<?> cls       = XposedHelpers.findClass("com.windmill.sdk.reward.WMRewardAd", cl);
-            XposedHelpers.findAndHookMethod(cls, "onVideoAdLoadSuccess", String.class,
-                    new XC_MethodHook() {
-                        @Override
-                        protected void afterHookedMethod(MethodHookParam param) {
-                            LogServer.log("[Load] Ad loaded successfully");
-                            // Manual only - no auto show
-                        }
-                    });
-            XposedBridge.log("QukanHook [Hook] onVideoAdLoadSuccess OK");
-        } catch (Throwable t) {
-            XposedBridge.log("QukanHook [Hook] onVideoAdLoadSuccess FAIL: " + t);
-        }
-    }
 
     // ======================================================================
-    // Hook 2b: Randomize loadId and extraInfo on every ad reward submission
-    // Prevents server from detecting duplicate/replayed requests
+    // Hook 2b: 每次提交时随机化 extraInfo
+    // 防止服务端检测到重复/重放请求
     // ======================================================================
     private void hookRandomizeAdInfo(ClassLoader cl) {
         try {
             Class<?> adInfoCls = XposedHelpers.findClass("com.windmill.sdk.models.AdInfo", cl);
 
-            // Randomize extraInfo inside options map (avoid duplicate detection)
-            // NOTE: loadId is NOT randomized — must stay consistent with aVar.aB() used in rtbcallback
-            XposedHelpers.findAndHookMethod(adInfoCls, "getOptions", new XC_MethodHook() {
+            // 仅在 fillData 时随机化 extraInfo，避免 getOptions() 被 SDK 内部多次调用时重复替换
+            XposedHelpers.findAndHookMethod(adInfoCls, "fillData",
+                    XposedHelpers.findClass("com.windmill.sdk.WindMillAdRequest", cl),
+                    new XC_MethodHook() {
                 @Override
                 @SuppressWarnings("unchecked")
                 protected void afterHookedMethod(MethodHookParam param) {
-                    java.util.Map<String, Object> options = (java.util.Map<String, Object>) param.getResult();
+                    java.util.Map<String, Object> options = (java.util.Map<String, Object>)
+                            XposedHelpers.callMethod(param.thisObject, "getOptions");
                     if (options != null && options.containsKey("extraInfo")) {
-                        String newEinfo = java.util.UUID.randomUUID().toString().replace("-", "")
-                                + "_" + System.currentTimeMillis();
+                        // 原始格式: UUID.randomUUID().toString().replaceAll("-", "")
+                        String newEinfo = java.util.UUID.randomUUID().toString().replace("-", "");
                         options.put("extraInfo", newEinfo);
                     }
                 }
             });
 
-            LogServer.log("[Hook] hookRandomizeAdInfo (einfo only, loadId unchanged) OK");
-            XposedBridge.log("QukanHook [Hook] hookRandomizeAdInfo OK");
+            LogServer.log("[Hook] extraInfo 随机化 Hook 注册成功");
+            XposedBridge.log("QukanHook [Hook] extraInfo随机化 注册成功");
         } catch (Throwable t) {
-            LogServer.log("[Hook] hookRandomizeAdInfo FAIL: " + t.getMessage());
-            XposedBridge.log("QukanHook [Hook] hookRandomizeAdInfo FAIL: " + t);
+            LogServer.log("[Hook] extraInfo 随机化 Hook 失败: " + t.getMessage());
+            XposedBridge.log("QukanHook [Hook] extraInfo随机化 注册失败: " + t);
         }
     }
     // ======================================================================
-    // Hook 3: Let WMRewardAd.show() proceed (ad loads fully), then when
-    // onVideoAdPlayStart fires, immediately trigger reward callbacks + close
+    // Hook 3: 奖励广告加载后，在 onVideoAdPlayStart 触发时
+    // 立即触发奖励回调链 + 关闭广告
     // ======================================================================
     private void hookSigmobAdActivity(ClassLoader cl) {
         try {
             Class<?> wmRewardAdCls = XposedHelpers.findClass("com.windmill.sdk.reward.WMRewardAd", cl);
             Class<?> adInfoCls = XposedHelpers.findClass("com.windmill.sdk.models.AdInfo", cl);
 
-            // Hook show(): 让广告正常加载，但记录 wmRewardAd 实例，透明化窗口
-            XposedHelpers.findAndHookMethod(wmRewardAdCls, "show",
-                    Activity.class, java.util.HashMap.class,
-                    new XC_MethodHook() {
-                        @Override
-                        protected void beforeHookedMethod(MethodHookParam param) {
-                            if (!skipAdEnabled) {
-                                LogServer.log("[Skip] 跳过广告已关闭，正常播放视频");
-                                return;
-                            }
-                            LogServer.log("[Skip] ★ WMRewardAd.show() → 允许加载，准备快速关闭");
-                            // 不阻止 show()，让广告正常加载
-                        }
-                    });
 
             // Hook onVideoAdPlayStart(): 广告真正开始播放后，立即触发奖励回调 + 关闭
             XposedHelpers.findAndHookMethod(wmRewardAdCls, "onVideoAdPlayStart",
@@ -483,15 +431,16 @@ public class MainHook implements IXposedHookLoadPackage {
                                                 rewardJson.put("rewardTimestamp", String.valueOf(System.currentTimeMillis()));
 
                                                 String rvUrl = (String) XposedHelpers.callMethod(aVar, "ag");
+                                                String queryStr = null;
                                                 if (rvUrl != null && !rvUrl.isEmpty()) {
-                                                    String queryStr = "";
                                                     try {
                                                         Class<?> sdkCfgCls = XposedHelpers.findClass("com.windmill.sdk.strategy.WMSdkConfig", cl);
                                                         queryStr = (String) XposedHelpers.callStaticMethod(sdkCfgCls, "getServerQueryString");
-                                                    } catch (Throwable t) {
-                                                        LogServer.log("[Skip] ✗ getServerQueryString 失败，跳过 rtbcallback: " + t.getMessage());
-                                                        throw t;
+                                                    } catch (Throwable t2) {
+                                                        LogServer.log("[Skip] getServerQueryString 失败，跳过 rtbcallback");
                                                     }
+                                                }
+                                                if (rvUrl != null && !rvUrl.isEmpty() && queryStr != null) {
                                                     String fullUrl = rvUrl + (rvUrl.contains("?") ? "&" : "?") + queryStr;
 
                                                     Object windMillAdReq = null;
@@ -512,9 +461,9 @@ public class MainHook implements IXposedHookLoadPackage {
                                                             new Class<?>[]{jCallbackCls},
                                                             (proxy, method, args) -> {
                                                                 if (method.getName().equals("a") && (args == null || args.length == 0)) {
-                                                                    LogServer.log("[Skip] ✅ rtbcallback reward SUCCESS");
+                                                                    LogServer.log("[Skip] ✅ rtbcallback 奖励回调成功");
                                                                 } else if (method.getName().equals("a") && args != null && args.length > 0) {
-                                                                    LogServer.log("[Skip] ✗ rtbcallback reward ERROR: " + args[0]);
+                                                                    LogServer.log("[Skip] ✗ rtbcallback 奖励回调失败: " + args[0]);
                                                                 }
                                                                 return null;
                                                             });
@@ -559,11 +508,11 @@ public class MainHook implements IXposedHookLoadPackage {
                         }
                     });
 
-            LogServer.log("[Hook] hookWMRewardAdShow (加载+快速关闭) registered OK");
-            XposedBridge.log("QukanHook [Hook] hookWMRewardAdShow OK");
+            LogServer.log("[Hook] 奖励广告跳过 Hook 注册成功");
+            XposedBridge.log("QukanHook [Hook] 奖励广告跳过 注册成功");
         } catch (Throwable t) {
-            LogServer.log("[Hook] hookWMRewardAdShow FAIL: " + t.getMessage());
-            XposedBridge.log("QukanHook [Hook] hookWMRewardAdShow FAIL: " + t);
+            LogServer.log("[Hook] 奖励广告跳过 Hook 失败: " + t.getMessage());
+            XposedBridge.log("QukanHook [Hook] 奖励广告跳过 注册失败: " + t);
         }
     }
 
@@ -572,180 +521,38 @@ public class MainHook implements IXposedHookLoadPackage {
      */
     private void closeAdActivities() {
         try {
+            // 通过 ActivityThread 获取所有运行中的 Activity
             Object activityThread = XposedHelpers.callStaticMethod(
                     XposedHelpers.findClass("android.app.ActivityThread", null),
                     "currentActivityThread");
             java.util.Map<?, ?> activities = (java.util.Map<?, ?>)
                     XposedHelpers.getObjectField(activityThread, "mActivities");
             if (activities == null) return;
-
-            int total = activities.size();
-            LogServer.log("[CloseAct] 当前Activity数量: " + total);
-
-            // 只有 1 个 Activity 时不关闭（那是 App 本身，关了 App 就退出了）
-            if (total <= 1) {
-                LogServer.log("[CloseAct] 仅1个Activity，跳过（避免关闭App）");
-                return;
-            }
-
-            // App 自身的包名前缀白名单
-            String[] appPrefixes = {
-                "top.dffhq.qwsh",
-                "com.example.advertisinglibrary",
-                "com.adwork"  // App 的 SplashActivity 等
-            };
-
             for (Object record : activities.values()) {
                 Activity act = (Activity) XposedHelpers.getObjectField(record, "activity");
                 if (act != null && !act.isFinishing()) {
                     String name = act.getClass().getName();
-                    boolean isApp = false;
-                    for (String prefix : appPrefixes) {
-                        if (name.startsWith(prefix)) {
-                            isApp = true;
-                            break;
-                        }
-                    }
-                    if (!isApp) {
-                        LogServer.log("[CloseAct] 关闭广告 Activity: " + name);
+                    if (name.startsWith("com.windmill") || name.startsWith("com.czhj")
+                            || name.startsWith("com.sigmob") || name.startsWith("com.bytedance")
+                            || name.startsWith("com.kwad") || name.startsWith("com.baidu")
+                            || name.startsWith("com.qq.e") || name.startsWith("com.pangle")
+                            || name.startsWith("com.volcengine")) {
+                        LogServer.log("[Skip] 关闭广告 Activity: " + name);
                         act.finish();
                     }
                 }
             }
         } catch (Throwable t) {
-            LogServer.log("[CloseAct] 异常: " + t.getMessage());
+            LogServer.log("[Skip] 关闭广告 Activity 异常: " + t.getMessage());
         }
     }
 
-    // ======================================================================
-    // Hook 3b: Make Windmill/Sigmob reward video Activity transparent + silent
-    // The video still PLAYS (server verifies) but user sees through it
-    // ======================================================================
-    private void hookAdWindowTransparent(ClassLoader cl) {
-        try {
-            XposedHelpers.findAndHookMethod(Activity.class, "onWindowFocusChanged", boolean.class,
-                    new XC_MethodHook() {
-                        @Override
-                        protected void afterHookedMethod(MethodHookParam param) {
-                            boolean hasFocus = (boolean) param.args[0];
-                            if (!hasFocus || !running) return;
-                            Activity act = (Activity) param.thisObject;
-                            String pkg = act.getClass().getName();
-                            // Only target Windmill/Sigmob/czhj SDK activities
-                            if (!pkg.startsWith("com.windmill") && !pkg.startsWith("com.czhj")
-                                    && !pkg.startsWith("com.sigmob")) return;
-                            LogServer.log("[AdWindow] Windmill activity detected: " + pkg + " — making transparent");
-                            try {
-                                // Set window alpha to 0 (invisible but still foreground → video plays)
-                                android.view.Window w = act.getWindow();
-                                w.setDimAmount(0f);
-                                android.view.WindowManager.LayoutParams lp = w.getAttributes();
-                                lp.alpha = 0f;          // fully transparent
-                                lp.screenBrightness = 0.01f; // dim screen
-                                w.setAttributes(lp);
-                                // Mute audio via AudioManager
-                                android.media.AudioManager am = (android.media.AudioManager)
-                                        act.getSystemService(android.content.Context.AUDIO_SERVICE);
-                                if (am != null) am.adjustStreamVolume(
-                                        android.media.AudioManager.STREAM_MUSIC,
-                                        android.media.AudioManager.ADJUST_MUTE, 0);
-                                LogServer.log("[AdWindow] Transparent + muted ✅");
-                            } catch (Throwable t) {
-                                LogServer.log("[AdWindow] FAIL: " + t.getMessage());
-                            }
-                        }
-                    });
-            XposedBridge.log("QukanHook [Hook] hookAdWindowTransparent OK");
-        } catch (Throwable t) {
-            XposedBridge.log("QukanHook [Hook] hookAdWindowTransparent FAIL: " + t);
-        }
-    }
 
     // ======================================================================
-    // Hook 4: WMRewardAd.onVideoAdPlayStart
-    // ======================================================================
-    private void hookRewardAdPlayStart(ClassLoader cl) {
-        try {
-            Class<?> cls       = XposedHelpers.findClass("com.windmill.sdk.reward.WMRewardAd", cl);
-            Class<?> adInfoCls = XposedHelpers.findClass("com.windmill.sdk.models.AdInfo", cl);
-            XposedHelpers.findAndHookMethod(cls, "onVideoAdPlayStart", adInfoCls, boolean.class,
-                    new XC_MethodHook() {
-                        @Override
-                        protected void afterHookedMethod(MethodHookParam param) {
-                            LogServer.log("[Play] Video playing, waiting for reward...");
-                        }
-                    });
-        } catch (Throwable t) {
-            XposedBridge.log("QukanHook [Hook] onVideoAdPlayStart FAIL: " + t);
-        }
-    }
-
-    // ======================================================================
-    // Hook 5: WMRewardAd.onVideoAdReward — reward arrived, schedule next round
-    // ======================================================================
-    private void hookRewardAdReward(ClassLoader cl) {
-        try {
-            Class<?> cls          = XposedHelpers.findClass("com.windmill.sdk.reward.WMRewardAd", cl);
-            Class<?> adInfoCls    = XposedHelpers.findClass("com.windmill.sdk.models.AdInfo", cl);
-            Class<?> rewardInfoCls= XposedHelpers.findClass("com.windmill.sdk.reward.WMRewardInfo", cl);
-            XposedHelpers.findAndHookMethod(cls, "onVideoAdReward",
-                    adInfoCls, rewardInfoCls,
-                    new XC_MethodHook() {
-                        @Override
-                        protected void afterHookedMethod(MethodHookParam param) {
-                            // roundCount tracked by hookRedPacketReward — just log here
-                            LogServer.log("[Reward] WMRewardAd.onVideoAdReward fired (SDK level)");
-                        }
-                    });
-            XposedBridge.log("QukanHook [Hook] onVideoAdReward OK");
-        } catch (Throwable t) {
-            XposedBridge.log("QukanHook [Hook] onVideoAdReward FAIL: " + t);
-        }
-    }
-
-    // ======================================================================
-    // Hook 6: WMRewardAd.onVideoAdPlayEnd
-    // ======================================================================
-    private void hookRewardAdPlayEnd(ClassLoader cl) {
-        try {
-            Class<?> cls       = XposedHelpers.findClass("com.windmill.sdk.reward.WMRewardAd", cl);
-            Class<?> adInfoCls = XposedHelpers.findClass("com.windmill.sdk.models.AdInfo", cl);
-            XposedHelpers.findAndHookMethod(cls, "onVideoAdPlayEnd", adInfoCls,
-                    new XC_MethodHook() {
-                        @Override
-                        protected void afterHookedMethod(MethodHookParam param) {
-                            LogServer.log("[PlayEnd] Video ended");
-                        }
-                    });
-        } catch (Throwable t) {
-            XposedBridge.log("QukanHook [Hook] onVideoAdPlayEnd FAIL: " + t);
-        }
-    }
-
-    // ======================================================================
-    // Hook 7: WMRewardAd.onVideoAdClosed
-    // ======================================================================
-    private void hookRewardAdClosed(ClassLoader cl) {
-        try {
-            Class<?> cls       = XposedHelpers.findClass("com.windmill.sdk.reward.WMRewardAd", cl);
-            Class<?> adInfoCls = XposedHelpers.findClass("com.windmill.sdk.models.AdInfo", cl);
-            XposedHelpers.findAndHookMethod(cls, "onVideoAdClosed", adInfoCls,
-                    new XC_MethodHook() {
-                        @Override
-                        protected void afterHookedMethod(MethodHookParam param) {
-                            LogServer.log("[Closed] Ad closed");
-                        }
-                    });
-        } catch (Throwable t) {
-            XposedBridge.log("QukanHook [Hook] onVideoAdClosed FAIL: " + t);
-        }
-    }
-
-    // ======================================================================
-    // Hook: Custom Credentials (OAID, Token, and UserDataEntity)
+    // Hook: 凭证注入（OAID、Token、UserDataEntity）
     // ======================================================================
     private void hookCustomCredentials(ClassLoader cl) {
-        // Hook OAID
+        // Hook OAID 读取
         try {
             Class<?> bClass = XposedHelpers.findClass("x2.b", cl);
             XposedHelpers.findAndHookMethod(bClass, "i", new XC_MethodReplacement() {
@@ -836,11 +643,11 @@ public class MainHook implements IXposedHookLoadPackage {
             });
             XposedBridge.log("QukanHook [Hook] hookCustomCredentials (z.n) OK");
         } catch (Throwable t) {
-            XposedBridge.log("QukanHook [Hook] hookCustomCredentials (z.n) FAIL: " + t);
+            XposedBridge.log("QukanHook [Hook] 凭证注入 (z.n) 注册失败: " + t);
         }
 
-        // Hook z.x(UserDataEntity) — when App refreshes user info from server,
-        // update our customUserJson so we don't keep returning stale data
+        // Hook z.x(UserDataEntity) — 用户信息同步 — when App refreshes user info from server,
+        // 同步更新本地缓存
         try {
             Class<?> zClass = XposedHelpers.findClass("com.example.advertisinglibrary.util.z", cl);
             Class<?> userClass = XposedHelpers.findClass("com.example.advertisinglibrary.bean.UserDataEntity", cl);
@@ -850,7 +657,7 @@ public class MainHook implements IXposedHookLoadPackage {
                     Object userEntity = param.args[0];
                     if (userEntity == null) return;
                     try {
-                        // Only update if refresh was truly successful (has token + user)
+                        // 仅在刷新成功时更新（token + user 非空）
                         String token = (String) XposedHelpers.callMethod(userEntity, "getAccess_token");
                         Object user = XposedHelpers.callMethod(userEntity, "getUser");
                         if (token == null || token.isEmpty() || user == null) {
@@ -895,7 +702,7 @@ public class MainHook implements IXposedHookLoadPackage {
                             }
                         }
                     } catch (Throwable t) {
-                        LogServer.log("[Refresh] Failed to serialize UserDataEntity: " + t.getMessage());
+                        LogServer.log("[Refresh] UserDataEntity 序列化失败: " + t.getMessage());
                     }
                 }
             });
@@ -919,36 +726,36 @@ public class MainHook implements IXposedHookLoadPackage {
                             + " errors=" + errorCount + "/" + MAX_ERRORS);
                     if (errorCount >= MAX_ERRORS) {
                         running = false;
-                        LogServer.log("[STOP] Too many errors, auto-loop stopped.");
+                        LogServer.log("[STOP] 错误次数过多，自动循环已停止");
                         return;
                     }
                     h().postDelayed(MainHook.this::scheduleNextRound, RETRY_DELAY_MS);
                 }
             };
 
-            Class<?> adInfoCls = XposedHelpers.findClass("com.windmill.sdk.models.AdInfo", cl);
-            XposedHelpers.findAndHookMethod(cls, "onVideoAdLoadFail",  adInfoCls, errHook);
-            XposedHelpers.findAndHookMethod(cls, "onVideoAdPlayError", adInfoCls, errHook);
-            XposedBridge.log("QukanHook [Hook] errors OK");
+            Class<?> windMillErrorCls = XposedHelpers.findClass("com.windmill.sdk.WindMillError", cl);
+            XposedHelpers.findAndHookMethod(cls, "onVideoAdLoadFail",  windMillErrorCls, String.class, errHook);
+            XposedHelpers.findAndHookMethod(cls, "onVideoAdPlayError", windMillErrorCls, String.class, errHook);
+            XposedBridge.log("QukanHook [Hook] 错误监听 注册成功");
         } catch (Throwable t) {
-            XposedBridge.log("QukanHook [Hook] errors FAIL: " + t);
+            XposedBridge.log("QukanHook [Hook] 错误监听 注册失败: " + t);
         }
     }
 
     // ======================================================================
-    // Schedule next round: call fragment.showLoadRewardVideo() via reflection
-    // This is the exact same code path as user manually clicking the red packet
+    // 调度下一轮: 反射调用 fragment.showLoadRewardVideo()
+    // 与用户手动点击红包相同的代码路径
     // ======================================================================
     private void scheduleNextRound() {
         if (!running) return;
         Object fragment = fragmentRef != null ? fragmentRef.get() : null;
         if (fragment == null) {
-            // Fallback: call l.u() directly if fragment ref is gone
+            // 降级: Fragment 引用丢失，直接调用 l.u()
             Activity act     = activityRef  != null ? activityRef.get()  : null;
             Object adManager = adManagerRef != null ? adManagerRef.get() : null;
             Object listener  = adListener;
             if (act == null || act.isFinishing() || adManager == null || listener == null) {
-                LogServer.log("[Next] all refs gone, stopping loop");
+                LogServer.log("[Next] 所有引用已失效，停止循环");
                 running = false;
                 return;
             }
@@ -956,17 +763,17 @@ public class MainHook implements IXposedHookLoadPackage {
                 Method u = adManager.getClass().getMethod("u", Activity.class,
                         listener.getClass().getInterfaces()[0]);
                 u.invoke(adManager, act, listener);
-                LogServer.log("[Next] fallback l.u() called");
+                LogServer.log("[Next] 降级调用 l.u() 成功");
             } catch (Throwable t) {
-                LogServer.log("[Next] FAIL: " + t.getMessage());
+                LogServer.log("[Next] 失败: " + t.getMessage());
                 running = false;
             }
             return;
         }
         try {
-            // Step 1: Call getMVM().postAdreWards() — submits accumulated AdPostTypeBean list
-            // to GetAdrewardCoins.ashx. This is what the app does when user clicks a red packet
-            // message in the chat list (RedPacketFragment$c.a), BEFORE loading the ad.
+            // 步骤1: 调用 getMVM().postAdreWards() — submits accumulated AdPostTypeBean list
+            // 提交到 GetAdrewardCoins.ashx（与用户手动点击红包相同）
+            
             try {
                 Method getMVM = fragment.getClass().getMethod("getMVM");
                 getMVM.setAccessible(true);
@@ -978,41 +785,41 @@ public class MainHook implements IXposedHookLoadPackage {
                     LogServer.log("[Next] ✅ postAdreWards() called → GetAdrewardCoins.ashx");
                 }
             } catch (Throwable t) {
-                LogServer.log("[Next] postAdreWards skipped: " + t.getMessage());
+                LogServer.log("[Next] postAdreWards 跳过: " + t.getMessage());
             }
 
-            // Step 2: Load + show reward video (same as manual click dialog callback)
+            // 步骤2: 加载并展示奖励视频
             Method m = fragment.getClass().getDeclaredMethod("showLoadRewardVideo");
             m.setAccessible(true);
             m.invoke(fragment);
-            LogServer.log("[Next] showLoadRewardVideo() called — full App chain");
+            LogServer.log("[Next] showLoadRewardVideo() 已调用");
         } catch (Throwable t) {
-            LogServer.log("[Next] showLoadRewardVideo FAIL: " + t.getMessage());
+            LogServer.log("[Next] showLoadRewardVideo 失败: " + t.getMessage());
             running = false;
         }
     }
 
     // ======================================================================
-    // Trigger one round via HTTP /trigger endpoint
+    // 通过 HTTP /trigger 端点触发一轮
     // ======================================================================
     private String triggerOnce() {
         Object fragment = fragmentRef != null ? fragmentRef.get() : null;
         Activity act    = activityRef != null ? activityRef.get() : null;
 
-        // Fallback 1: recover Activity from Fragment if current one is finishing/null
+        // 降级1: 从 Fragment 恢复 Activity
         if (act == null || act.isFinishing()) {
             if (fragment != null) {
                 try {
                     act = (Activity) XposedHelpers.callMethod(fragment, "getActivity");
                     if (act != null && !act.isFinishing()) {
                         activityRef = new WeakReference<>(act);
-                        LogServer.log("[Trigger] Recovered valid Activity from RedPacketFragment");
+                        LogServer.log("[Trigger] 从 RedPacketFragment 恢复了 Activity");
                     }
                 } catch (Throwable ignored) {}
             }
         }
 
-        // Fallback 2: dynamically find RedPacketFragment if user never opened the tab
+        // 降级2: 动态搜索 RedPacketFragment
         if (fragment == null && act != null && !act.isFinishing()) {
             try {
                 Object fragmentManager = XposedHelpers.callMethod(act, "getSupportFragmentManager");
@@ -1021,28 +828,28 @@ public class MainHook implements IXposedHookLoadPackage {
                     if (f != null && f.getClass().getName().contains("RedPacketFragment")) {
                         fragment = f;
                         fragmentRef = new WeakReference<>(fragment);
-                        LogServer.log("[Trigger] Dynamically found RedPacketFragment in Activity");
+                        LogServer.log("[Trigger] 动态找到 RedPacketFragment");
                         break;
                     }
                 }
             } catch (Throwable t) {
-                LogServer.log("[Trigger] Failed to search fragments: " + t.getMessage());
+                LogServer.log("[Trigger] 搜索 Fragment 失败: " + t.getMessage());
             }
         }
 
 
         if (act == null || act.isFinishing())
-            return "FAIL: Activity not ready — open 红包 tab first";
+            return "失败: Activity 未就绪 — 请先打开红包页面";
         if (fragment == null)
-            return "FAIL: RedPacketFragment not ready — open 红包 tab first";
+            return "失败: RedPacketFragment 未就绪 — 请先打开红包页面";
             
         if (!running) { running = true; roundCount = 0; errorCount = 0; }
         h().post(this::scheduleNextRound);
-        return "Triggered round " + (roundCount + 1) + " via showLoadRewardVideo()";
+        return "已触发第 " + (roundCount + 1) + " 轮 showLoadRewardVideo()";
     }
 
     // ======================================================================
-    // Activate auto-loop on first manual ad trigger
+    // 首次手动触发广告时激活自动循环
     // ======================================================================
     private void activateAutoLoop() {
         running    = true;
@@ -1051,15 +858,15 @@ public class MainHook implements IXposedHookLoadPackage {
         Activity act = activityRef != null ? activityRef.get() : null;
         if (act != null) {
             h().post(() -> Toast.makeText(act.getApplicationContext(),
-                    "Auto-loop activated! Every " + LOOP_INTERVAL_MS/1000 + "s",
+                    "自动循环已激活! 每 " + LOOP_INTERVAL_MS/1000 + "s",
                     Toast.LENGTH_SHORT).show());
         }
-        LogServer.log("=== Auto-loop activated, interval=" + LOOP_INTERVAL_MS/1000 + "s ===");
+        LogServer.log("=== 自动循环已激活, 间隔=" + LOOP_INTERVAL_MS/1000 + "s ===");
     }
 
     // ======================================================================
-    // Hook: Device Fingerprint Spoofing
-    // Randomizes ANDROID_ID, IMEI, MAC deterministically based on customOaid
+    // Hook: 设备指纹伪造
+    // 基于 customOaid 确定性生成 ANDROID_ID/IMEI/MAC
     // ======================================================================
     private String getFakeFingerprint(String original, String prefix) {
         if (customOaid == null || customOaid.isEmpty()) return original;
@@ -1135,20 +942,20 @@ public class MainHook implements IXposedHookLoadPackage {
                 });
             } catch (Throwable ignored) {}
 
-            XposedBridge.log("QukanHook [Hook] hookDeviceFingerprint OK");
+            XposedBridge.log("QukanHook [Hook] 设备指纹伪造 注册成功");
         } catch (Throwable t) {
-            XposedBridge.log("QukanHook [Hook] hookDeviceFingerprint FAIL: " + t);
+            XposedBridge.log("QukanHook [Hook] 设备指纹伪造 注册失败: " + t);
         }
     }
 
     // ======================================================================
-    // Hook: RedPacketFragment$g.onVideoRewarded
-    // This is where postAdreWardsReceive() + GetAdrewardCoins.ashx are called.
-    // After this fires we know reward was delivered → schedule next round.
+    // Hook: 红包奖励回调 RedPacketFragment$g.onVideoRewarded
+    // postAdreWardsReceive() + GetAdrewardCoins.ashx 在此触发
+    // 此回调触发后表示奖励已发放 → 调度下一轮
     // ======================================================================
     private void hookRedPacketReward(ClassLoader cl) {
         try {
-            // Inner class name after R8: RedPacketFragment$g
+            // R8 混淆后的内部类名
             Class<?> cls       = XposedHelpers.findClass("com.example.advertisinglibrary.fragment.RedPacketFragment$g", cl);
             Class<?> adInfoCls = XposedHelpers.findClass("com.windmill.sdk.models.AdInfo", cl);
             Class<?> rewardCls = XposedHelpers.findClass("com.windmill.sdk.reward.WMRewardInfo", cl);
@@ -1161,12 +968,12 @@ public class MainHook implements IXposedHookLoadPackage {
                             errorCount = 0;
                             LogServer.log("★ [RedPacket.g] onVideoRewarded #" + roundCount
                                     + " — postAdreWardsReceive + GetAdrewardCoins.ashx fired by App");
-                            // Manual only - no auto scheduling
+                            // 仅手动触发，不自动调度
                         }
                     });
-            XposedBridge.log("QukanHook [Hook] RedPacketFragment$g.onVideoRewarded OK");
+            XposedBridge.log("QukanHook [Hook] 红包奖励回调 注册成功");
         } catch (Throwable t) {
-            XposedBridge.log("QukanHook [Hook] RedPacketFragment$g.onVideoRewarded FAIL: " + t);
+            XposedBridge.log("QukanHook [Hook] 红包奖励回调 注册失败: " + t);
         }
     }
 }
