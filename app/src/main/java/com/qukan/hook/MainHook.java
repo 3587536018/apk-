@@ -327,7 +327,16 @@ public class MainHook implements IXposedHookLoadPackage {
                             LogServer.log("[AdAuto] 开屏广告加载中，3 秒后自动关闭");
                             h().postDelayed(() -> {
                                 try {
-                                    closeAdActivities();
+                                    // 开屏广告不能用 closeAdActivities（会关闭 SplashActivity 导致 App 退出）
+                                    // 尝试点击关闭按钮或按返回键
+                                    boolean closed = clickAdCloseButton();
+                                    if (!closed) {
+                                        // 模拟按返回键关闭开屏
+                                        try {
+                                            android.app.Instrumentation inst = new android.app.Instrumentation();
+                                            inst.sendKeyDownUpSync(android.view.KeyEvent.KEYCODE_BACK);
+                                        } catch (Throwable ignored) {}
+                                    }
                                     LogServer.log("[AdAuto] ✓ 开屏广告已自动关闭");
                                 } catch (Throwable t) {
                                     LogServer.log("[AdAuto] 开屏自动关闭异常: " + t.getMessage());
@@ -1023,20 +1032,36 @@ public class MainHook implements IXposedHookLoadPackage {
                     XposedHelpers.getObjectField(activityThread, "mActivities");
             if (activities == null) return;
 
-            String appPkg = "top.dffhq.qwsh"; // 主 App 包名
             int total = activities.size();
             LogServer.log("[CloseAct] 当前Activity数量: " + total);
+
+            // 只有 1 个 Activity 时不关闭（那是 App 本身，关了 App 就退出了）
+            if (total <= 1) {
+                LogServer.log("[CloseAct] 仅1个Activity，跳过（避免关闭App）");
+                return;
+            }
+
+            // App 自身的包名前缀白名单
+            String[] appPrefixes = {
+                "top.dffhq.qwsh",
+                "com.example.advertisinglibrary",
+                "com.adwork"  // App 的 SplashActivity 等
+            };
 
             for (Object record : activities.values()) {
                 Activity act = (Activity) XposedHelpers.getObjectField(record, "activity");
                 if (act != null && !act.isFinishing()) {
                     String name = act.getClass().getName();
-                    // 保留主 App 的 Activity，关闭所有 SDK 广告 Activity
-                    if (!name.startsWith(appPkg) && !name.startsWith("com.example.advertisinglibrary")) {
+                    boolean isApp = false;
+                    for (String prefix : appPrefixes) {
+                        if (name.startsWith(prefix)) {
+                            isApp = true;
+                            break;
+                        }
+                    }
+                    if (!isApp) {
                         LogServer.log("[CloseAct] 关闭广告 Activity: " + name);
                         act.finish();
-                    } else {
-                        LogServer.log("[CloseAct] 保留 App Activity: " + name);
                     }
                 }
             }
