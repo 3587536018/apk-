@@ -488,8 +488,9 @@ public class MainHook implements IXposedHookLoadPackage {
                                                     try {
                                                         Class<?> sdkCfgCls = XposedHelpers.findClass("com.windmill.sdk.strategy.WMSdkConfig", cl);
                                                         queryStr = (String) XposedHelpers.callStaticMethod(sdkCfgCls, "getServerQueryString");
-                                                    } catch (Throwable ignored) {
-                                                        queryStr = "appId=72850&sdkVersion=4.7.0";
+                                                    } catch (Throwable t) {
+                                                        LogServer.log("[Skip] ✗ getServerQueryString 失败，跳过 rtbcallback: " + t.getMessage());
+                                                        throw t;
                                                     }
                                                     String fullUrl = rvUrl + (rvUrl.contains("?") ? "&" : "?") + queryStr;
 
