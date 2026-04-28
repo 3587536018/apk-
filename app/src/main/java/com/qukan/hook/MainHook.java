@@ -20,6 +20,10 @@ import de.robv.android.xposed.callbacks.XC_LoadPackage;
 
 public class MainHook implements IXposedHookLoadPackage {
 
+    private static MainHook instance;
+    public static MainHook getInstance() { return instance; }
+    public WeakReference<Object> getFragmentRef() { return fragmentRef; }
+
     private static final String TARGET_PKG = "top.dffhq.qwsh";
 
     private static final long LOOP_INTERVAL_MS  = 30_000;
@@ -97,6 +101,7 @@ public class MainHook implements IXposedHookLoadPackage {
     @Override
     public void handleLoadPackage(XC_LoadPackage.LoadPackageParam lpparam) throws Throwable {
         if (!TARGET_PKG.equals(lpparam.packageName)) return;
+        instance = this;
         XposedBridge.log("QukanHook >>> loaded for: " + lpparam.packageName);
 
         ClassLoader cl = lpparam.classLoader;

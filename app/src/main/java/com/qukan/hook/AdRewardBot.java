@@ -26,6 +26,8 @@ public class AdRewardBot {
     private static java.lang.reflect.Method methodB = null; // w.b(String,int,String,String,String,String,String)
 
     private static final Random random = new Random();
+    private static long lastSubmitTime = 0;      // 上次提交时间
+    private static int nextSubmitInterval = 0;   // 下次提交间隔(ms)
 
     /**
      * 启动循环注入（后台线程）
@@ -56,6 +58,10 @@ public class AdRewardBot {
                     return;
                 }
 
+                // 初始化提交计时
+                lastSubmitTime = System.currentTimeMillis();
+                nextSubmitInterval = randomInt(20, 30) * 1000;
+
                 while (!stopRequested) {
                     try {
                         int coins = injectOneAd();
@@ -63,6 +69,12 @@ public class AdRewardBot {
                             botSuccessCount++;
                             botPendingCoins += coins;
                             LogServer.botLog("[Bot] ★ 注入成功 gold=" + coins + " (累计: " + botPendingCoins + ", 第 " + botSuccessCount + " 条)");
+
+                            // 检查是否到提交时间
+                            long elapsed = System.currentTimeMillis() - lastSubmitTime;
+                            if (elapsed >= nextSubmitInterval && botPendingCoins > 0) {
+                                submitRewards();
+                            }
 
                             // 每条广告间隔 8~18 秒
                             int delay = randomInt(8, 18) * 1000;
@@ -168,6 +180,41 @@ public class AdRewardBot {
         int amount = (int) goldNumber;
         LogServer.botLog("[Bot] 📊 插屏 " + ad[0] + " ecpm=" + ecpm + " gold=" + amount);
         return amount;
+    }
+
+    /**
+     * 提交累计奖励到服务器：调用 getMVM().postAdreWards()
+     */
+    private static void submitRewards() {
+        try {
+            // 通过 MainHook 保存的 fragmentRef 获取 RedPacketFragment
+            java.lang.ref.WeakReference<?> fRef = MainHook.getInstance() != null
+                    ? MainHook.getInstance().getFragmentRef() : null;
+            Object fragment = fRef != null ? fRef.get() : null;
+            if (fragment == null) {
+                LogServer.botLog("[Bot] ⚠ Fragment 未就绪，跳过提交");
+                return;
+            }
+
+            java.lang.reflect.Method getMVM = fragment.getClass().getMethod("getMVM");
+            getMVM.setAccessible(true);
+            Object viewModel = getMVM.invoke(fragment);
+            if (viewModel != null) {
+                java.lang.reflect.Method post = viewModel.getClass().getDeclaredMethod("postAdreWards");
+                post.setAccessible(true);
+                post.invoke(viewModel);
+                int submitted = botPendingCoins;
+                botTotalCoins += submitted;
+                botPendingCoins = 0;
+                LogServer.botLog("[Bot] ✅ 提交成功! 本次: " + submitted + " 总计: " + botTotalCoins);
+            }
+        } catch (Throwable t) {
+            LogServer.botLog("[Bot] ✗ 提交异常: " + t.getMessage());
+        }
+        // 重置计时
+        lastSubmitTime = System.currentTimeMillis();
+        nextSubmitInterval = randomInt(20, 30) * 1000;
+        LogServer.botLog("[Bot] ⏱ 下次提交: " + (nextSubmitInterval / 1000) + "秒后");
     }
 
     // === 工具方法 ===
