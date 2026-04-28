@@ -246,21 +246,24 @@ public class MainHook implements IXposedHookLoadPackage {
                         protected void beforeHookedMethod(MethodHookParam param) {
                             if (!blockNonRewardAds) return;
                             try {
-                                // 通过 controller 获取当前加载的广告 networkName
-                                Object controller = XposedHelpers.getObjectField(param.thisObject, "controller");
-                                if (controller == null) return;
-                                // 尝试获取当前广告源的 networkName
-                                String networkName = "";
-                                try {
-                                    Object adSource = XposedHelpers.callMethod(controller, "m69124h");
-                                    if (adSource != null) {
-                                        networkName = (String) XposedHelpers.callMethod(adSource, "m69407aH");
-                                    }
-                                } catch (Throwable ignored) {}
+                                // 直接调用 getAdInfo() 获取当前加载的广告信息
+                                Object adInfo = XposedHelpers.callMethod(param.thisObject, "getAdInfo");
+                                if (adInfo == null) return;
+                                String networkName = (String) XposedHelpers.callMethod(adInfo, "getNetworkName");
 
                                 if ("baidu".equalsIgnoreCase(networkName)) {
                                     LogServer.log("[AdAuto] ⛔ 百度插屏被拦截，禁止展示");
                                     param.setResult(false); // 阻止 show() 执行
+
+                                    // 手动触发 onInterstitialAdClosed 回调，避免 App 锁屏状态卡死
+                                    // App 在 onInterstitialAdClosed 中会设置 app_lock_screen=true
+                                    try {
+                                        Object listener = XposedHelpers.getObjectField(param.thisObject, "wmInterstitialAdListener");
+                                        if (listener != null) {
+                                            XposedHelpers.callMethod(listener, "onInterstitialAdClosed", adInfo);
+                                            LogServer.log("[AdAuto] ✓ 已触发 onInterstitialAdClosed 回调");
+                                        }
+                                    } catch (Throwable ignored) {}
                                 }
                             } catch (Throwable t) {
                                 LogServer.log("[AdAuto] show拦截异常: " + t.getMessage());
