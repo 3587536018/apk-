@@ -301,21 +301,12 @@ public class MainHook implements IXposedHookLoadPackage {
                                 return;
                             }
 
-                            // 其他广告延迟 5 秒，先尝试 UI 关闭，失败则用 SDK 方法
+                            // 所有插屏广告延迟 5 秒后通过 SDK 内部方法直接关闭
+                            // 不再依赖 UI 点击（clickAdCloseButton 找到的 View 不一定能真正关闭广告）
                             final String finalNetworkName = networkName;
                             h().postDelayed(() -> {
-                                try {
-                                    boolean closed = clickAdCloseButton();
-                                    if (closed) {
-                                        LogServer.log("[AdAuto] ✓ 已点击关闭按钮 (" + finalNetworkName + ")");
-                                    } else {
-                                        LogServer.log("[AdAuto] UI关闭失败，使用SDK方法关闭 (" + finalNetworkName + ")");
-                                        closeInterstitialViaSdk(wmAd, adInfo);
-                                    }
-                                } catch (Throwable t) {
-                                    LogServer.log("[AdAuto] 插屏自动关闭异常: " + t.getMessage());
-                                    closeInterstitialViaSdk(wmAd, adInfo);
-                                }
+                                LogServer.log("[AdAuto] 5秒到期，通过SDK方法关闭插屏 (" + finalNetworkName + ")");
+                                closeInterstitialViaSdk(wmAd, adInfo);
                             }, 5000);
                         }
                     });
