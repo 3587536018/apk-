@@ -27,7 +27,7 @@ public class LogServer {
 
     private static final int PORT = 6789;
     static volatile int actualPort = PORT;   // 实际绑定的端口（可能 fallback 到其他）
-    private static final int MAX_LINES = 500;
+    private static final int MAX_LINES = 100;
     private static final SimpleDateFormat SDF =
             new SimpleDateFormat("HH:mm:ss.SSS", Locale.CHINA);
 

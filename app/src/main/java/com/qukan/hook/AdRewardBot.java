@@ -60,7 +60,7 @@ public class AdRewardBot {
 
                 // 初始化提交计时
                 lastSubmitTime = System.currentTimeMillis();
-                nextSubmitInterval = randomInt(20, 30) * 1000;
+                nextSubmitInterval = randomInt(30, 50) * 1000;
 
                 while (!stopRequested) {
                     try {
