@@ -433,7 +433,6 @@ public class LogServer {
             "<div class='stat-item'><div class='stat-val v-red'>" + errCount + "</div><div class='stat-label'>错误</div></div>" +
             "<div class='stat-item'><div class='stat-val v-orange'>" + blockCount + "</div><div class='stat-label'>广告拦截</div></div>" +
             "<div class='stat-item'><div class='stat-val v-purple'>" + AdRewardBot.botSuccessCount + "</div><div class='stat-label'>Bot成功</div></div>" +
-            "<div class='stat-item'><div class='stat-val v-green'>" + AdRewardBot.botTotalCoins + "</div><div class='stat-label'>Bot金币</div></div>" +
             "</div>" +
 
             // === 开关面板 ===
@@ -499,7 +498,6 @@ public class LogServer {
             "document.querySelectorAll('.stat-val')[2].textContent=d.errCount;" +
             "document.querySelectorAll('.stat-val')[3].textContent=d.blockCount;" +
             "document.querySelectorAll('.stat-val')[4].textContent=d.botSuccess;" +
-            "document.querySelectorAll('.stat-val')[5].textContent=d.botCoins;" +
             // 更新 Hook 日志（仅当日志数量变化时）
             "if(d.logCount!==_lastLogCnt){_lastLogCnt=d.logCount;lb.innerHTML=d.hookHtml;if(_autoScroll)lb.scrollTop=lb.scrollHeight;}" +
             // 更新 Bot 日志（仅当日志数量变化时）
@@ -596,8 +594,6 @@ public class LogServer {
                 "\"blockCount\":" + blockCount + "," +
                 "\"botSuccess\":" + AdRewardBot.botSuccessCount + "," +
                 "\"botFail\":" + AdRewardBot.botFailCount + "," +
-                "\"botCoins\":" + AdRewardBot.botTotalCoins + "," +
-                "\"botPending\":" + AdRewardBot.botPendingCoins + "," +
                 "\"botRunning\":" + AdRewardBot.botRunning + "," +
                 "\"botLogCount\":" + botLogs.size() + "," +
                 "\"hookHtml\":\"" + escJson(hookHtml.toString()) + "\"," +

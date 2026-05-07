@@ -1288,46 +1288,29 @@ public class MainHook implements IXposedHookLoadPackage {
             LogServer.log("[Hook] 加密参数 Hook 失败: " + t.getMessage());
         }
 
-        // z2.a 是 Retrofit 接口（Kotlin suspend），抽象方法无法被 Xposed Hook
-        // 改为在 OkHttp 层拦截所有请求：Hook RealCall.execute() 和 RealCall.enqueue()
-        try {
-            Class<?> realCallCls = XposedHelpers.findClass("okhttp3.RealCall", cl);
-            // 同步请求
-            XposedHelpers.findAndHookMethod(realCallCls, "execute",
-                    new XC_MethodHook() {
-                        @Override
-                        protected void beforeHookedMethod(MethodHookParam param) throws Throwable {
-                            Object request = XposedHelpers.getObjectField(param.thisObject, "originalRequest");
-                            if (request != null) {
-                                Object urlObj = XposedHelpers.callMethod(request, "url");
-                                LogServer.log("[API] 📡 请求URL(Sync): " + urlObj);
-                                Object body = XposedHelpers.callMethod(request, "body");
-                                if (body != null) {
-                                    LogServer.log("[API] 📦 RequestBody: " + body.getClass().getName());
-                                }
-                            }
-                        }
-                    });
-            // 异步请求
-            XposedHelpers.findAndHookMethod(realCallCls, "enqueue",
-                    "okhttp3.Callback", new XC_MethodHook() {
-                        @Override
-                        protected void beforeHookedMethod(MethodHookParam param) throws Throwable {
-                            Object request = XposedHelpers.getObjectField(param.thisObject, "originalRequest");
-                            if (request != null) {
-                                Object urlObj = XposedHelpers.callMethod(request, "url");
-                                LogServer.log("[API] 📡 请求URL(Async): " + urlObj);
-                                Object body = XposedHelpers.callMethod(request, "body");
-                                if (body != null) {
-                                    LogServer.log("[API] 📦 RequestBody: " + body.getClass().getName());
-                                }
-                            }
-                        }
-                    });
-            LogServer.log("[Hook] 📡 OkHttp 请求日志 Hook 已注册");
-        } catch (Throwable t) {
-            LogServer.log("[Hook] OkHttp Hook 失败: " + t.getMessage());
-        }
+        // z2.a 是 Retrofit 接口（Kotlin suspend），抽象方法无法被 Xposed Hook，暂注释
+        // try {
+        //     Class<?> apiCls = XposedHelpers.findClass("z2.a", cl);
+        //     for (java.lang.reflect.Method m : apiCls.getDeclaredMethods()) {
+        //         if (m.getName().equals("u") && m.getParameterTypes().length == 3) {
+        //             XposedBridge.hookMethod(m, new XC_MethodHook() {
+        //                 @Override
+        //                 protected void beforeHookedMethod(MethodHookParam param) {
+        //                     String url = (String) param.args[0];
+        //                     Object body = param.args[1];
+        //                     LogServer.log("[API] 📡 请求URL: " + url);
+        //                     if (body != null) {
+        //                         LogServer.log("[API] 📦 RequestBody: " + body.getClass().getName());
+        //                     }
+        //                 }
+        //             });
+        //             break;
+        //         }
+        //     }
+        //     LogServer.log("[Hook] 📡 API 请求日志 Hook 已注册");
+        // } catch (Throwable t) {
+        //     LogServer.log("[Hook] API Hook 失败: " + t.getMessage());
+        // }
     }
 
     // ======================================================================

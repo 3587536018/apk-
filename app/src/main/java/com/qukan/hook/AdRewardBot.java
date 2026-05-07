@@ -18,8 +18,6 @@ public class AdRewardBot {
     // 统计
     public static volatile int botSuccessCount = 0;
     public static volatile int botFailCount = 0;
-    public static volatile int botTotalCoins = 0;    // 刷币成功后才计入
-    public static volatile int botPendingCoins = 0;  // 当前轮次待刷金币
 
     // 反射缓存
     private static Object wInstance = null;         // C8619w 单例 (w.a)
@@ -64,10 +62,10 @@ public class AdRewardBot {
 
                 while (!stopRequested) {
                     try {
-                        // 1. 优先检查是否需要提交已累积的奖励 (每 20-30 秒)
+                        // 1. 优先检查是否需要提交已累积的奖励
                         long elapsed = System.currentTimeMillis() - lastSubmitTime;
-                        if (elapsed >= nextSubmitInterval && botPendingCoins > 0) {
-                            LogServer.botLog("[Bot] ⏳ 达到提交间隔 (" + (elapsed / 1000) + "s)，正在上报累积奖励 pending=" + botPendingCoins + "...");
+                        if (elapsed >= nextSubmitInterval) {
+                            LogServer.botLog("[Bot] ⏳ 达到提交间隔 (" + (elapsed / 1000) + "s)，正在上报累积奖励...");
                             submitRewards();
                         }
 
@@ -75,11 +73,10 @@ public class AdRewardBot {
                         int coins = injectOneAd();
                         if (coins >= 0) {
                             botSuccessCount++;
-                            botPendingCoins += coins;
 
-                            // 每条广告间隔 8~18 秒
+                            // 每条广告间隔 30~60 秒
                             int delaySec = randomInt(30, 60);
-                            LogServer.botLog("[Bot] ★ 注入成功 gold=" + coins + " (累计待报: " + botPendingCoins + ", 第 " + botSuccessCount + " 条, 等待 " + delaySec + "s)");
+                            LogServer.botLog("[Bot] ★ 注入成功 gold=" + coins + " (第 " + botSuccessCount + " 条, 等待 " + delaySec + "s)");
                             sleep(delaySec * 1000L);
                         } else {
                             botFailCount++;
@@ -186,9 +183,7 @@ public class AdRewardBot {
      * 提交累计奖励到服务器：调用 getMVM().postAdreWards()
      */
     private static void submitRewards() {
-        int pendingBefore = botPendingCoins;
         try {
-            // 通过 MainHook 保存的 fragmentRef 获取 RedPacketFragment
             java.lang.ref.WeakReference<?> fRef = MainHook.getInstance() != null
                     ? MainHook.getInstance().getFragmentRef() : null;
             Object fragment = fRef != null ? fRef.get() : null;
@@ -205,62 +200,16 @@ public class AdRewardBot {
                 return;
             }
 
-            // 获取 postAdreWardsResult LiveData（用于读取响应）
-            java.lang.reflect.Method getResult = viewModel.getClass().getMethod("getPostAdreWardsResult");
-            getResult.setAccessible(true);
-            Object liveData = getResult.invoke(viewModel);
-
-            // 记录调用前的 LiveData 值
-            Object beforeValue = null;
-            java.lang.reflect.Method getValue = null;
-            if (liveData != null) {
-                getValue = liveData.getClass().getMethod("getValue");
-                getValue.setAccessible(true);
-                beforeValue = getValue.invoke(liveData);
-            }
-
-            // 调用 postAdreWards() → 提交到 GetAdrewardCoins.ashx
             java.lang.reflect.Method post = viewModel.getClass().getDeclaredMethod("postAdreWards");
             post.setAccessible(true);
             post.invoke(viewModel);
-
-            // 轮询 LiveData 等待服务器响应（最多 10 秒）
-            if (getValue != null) {
-                for (int i = 0; i < 20; i++) {
-                    sleep(500);
-                    Object afterValue = getValue.invoke(liveData);
-                    if (afterValue != null && afterValue != beforeValue) {
-                        try {
-                            // 尝试反射获取 coins 字段
-                            java.lang.reflect.Method getCoins = afterValue.getClass().getMethod("getCoins");
-                            Object coinsObj = getCoins.invoke(afterValue);
-                            int serverCoins = (coinsObj instanceof Integer) ? (int) coinsObj : 0;
-                            botTotalCoins += serverCoins;
-                            botPendingCoins = 0;
-                            LogServer.botLog("[Bot] ✅ 提交成功! 服务器返回金币: " + serverCoins + " (总计已刷: " + botTotalCoins + ")");
-                        } catch (Throwable t) {
-                            // 字段名不匹配时输出完整对象内容供分析
-                            LogServer.botLog("[Bot] 📥 服务器响应内容(原始): " + afterValue.toString());
-                            botTotalCoins += pendingBefore; // 降级处理
-                            botPendingCoins = 0;
-                        }
-                        // 重置计时
-                        lastSubmitTime = System.currentTimeMillis();
-                        nextSubmitInterval = randomInt(20, 30) * 1000;
-                        LogServer.botLog("[Bot] ⏱ 下次提交: " + (nextSubmitInterval / 1000) + "秒后");
-                        return;
-                    }
-                }
-                // 超时
-                LogServer.botLog("[Bot] ⚠ postAdreWards 已发出但等待响应超时（10s）");
-                botPendingCoins = 0;
-            }
+            LogServer.botLog("[Bot] ✅ postAdreWards 已提交");
         } catch (Throwable t) {
             LogServer.botLog("[Bot] ✗ 提交异常: " + t.getMessage());
         }
         // 重置计时
         lastSubmitTime = System.currentTimeMillis();
-        nextSubmitInterval = randomInt(20, 30) * 1000;
+        nextSubmitInterval = randomInt(30, 50) * 1000;
         LogServer.botLog("[Bot] ⏱ 下次提交: " + (nextSubmitInterval / 1000) + "秒后");
     }
 
