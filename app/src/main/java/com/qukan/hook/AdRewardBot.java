@@ -76,11 +76,11 @@ public class AdRewardBot {
                         if (coins >= 0) {
                             botSuccessCount++;
                             botPendingCoins += coins;
-                            LogServer.botLog("[Bot] ★ 注入成功 gold=" + coins + " (累计待报: " + botPendingCoins + ", 第 " + botSuccessCount + " 条)");
 
                             // 每条广告间隔 8~18 秒
-                            int delay = randomInt(8, 18) * 1000;
-                            sleep(delay);
+                            int delaySec = randomInt(30, 60);
+                            LogServer.botLog("[Bot] ★ 注入成功 gold=" + coins + " (累计待报: " + botPendingCoins + ", 第 " + botSuccessCount + " 条, 等待 " + delaySec + "s)");
+                            sleep(delaySec * 1000L);
                         } else {
                             botFailCount++;
                             LogServer.botLog("[Bot] ✗ 注入失败 (失败: " + botFailCount + ")");
