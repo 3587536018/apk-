@@ -48,7 +48,7 @@ jobs:
         run: upx --best bin/frps.exe bin/frpc.exe 2>&1
 
       - name: Upload artifacts
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v6
         with:
           name: frp-windows
           path: bin/
@@ -107,7 +107,7 @@ jobs:
         run: upx --best bin/* 2>&1
 
       - name: Upload artifacts
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v6
         with:
           name: frp-${{ matrix.target.suffix }}
           path: bin/
