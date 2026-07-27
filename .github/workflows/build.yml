@@ -37,8 +37,15 @@ jobs:
       - name: Build Go binaries
         run: |
           $env:CGO_ENABLED=0
-          go build -trimpath -o bin/frps.exe ./cmd/frps
-          go build -trimpath -o bin/frpc.exe ./cmd/frpc
+          go build -trimpath -ldflags="-s -w" -o bin/frps.exe ./cmd/frps
+          go build -trimpath -ldflags="-s -w" -o bin/frpc.exe ./cmd/frpc
+
+      - name: Install UPX
+        run: choco install upx -y 2>&1 || Write-Host "UPX not available, skipping"
+
+      - name: Compress with UPX
+        continue-on-error: true
+        run: upx --best bin/frps.exe bin/frpc.exe 2>&1
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v5
@@ -89,8 +96,15 @@ jobs:
           if [ -n "${{ matrix.target.goarm }}" ]; then export GOARM=${{ matrix.target.goarm }}; fi
           if [ -n "${{ matrix.target.gomips }}" ]; then export GOMIPS=${{ matrix.target.gomips }}; fi
           suffix="${{ matrix.target.suffix }}"
-          go build -trimpath -tags frps -o "bin/frps_${suffix}" ./cmd/frps
-          go build -trimpath -tags frpc -o "bin/frpc_${suffix}" ./cmd/frpc
+          go build -trimpath -ldflags="-s -w" -tags frps -o "bin/frps_${suffix}" ./cmd/frps
+          go build -trimpath -ldflags="-s -w" -tags frpc -o "bin/frpc_${suffix}" ./cmd/frpc
+
+      - name: Install UPX
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq upx-ucl 2>&1 || echo "UPX not available, skipping"
+
+      - name: Compress with UPX
+        continue-on-error: true
+        run: upx --best bin/* 2>&1
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v5
