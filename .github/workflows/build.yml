@@ -46,8 +46,15 @@ jobs:
           name: frp-windows
           path: bin/
 
-  build-linux:
+  build-all:
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        target:
+          - { os: linux,  arch: amd64,                     suffix: linux_amd64 }
+          - { os: linux,  arch: arm64,                     suffix: linux_arm64 }
+          - { os: linux,  arch: arm,    goarm: 7,          suffix: linux_arm_hf }
+          - { os: linux,  arch: mipsle, gomips: softfloat, suffix: linux_mipsle }
     steps:
       - name: Checkout
         uses: actions/checkout@v6
@@ -75,10 +82,18 @@ jobs:
           go-version: '1.25'
 
       - name: Build Go binaries
-        run: make build
+        run: |
+          export CGO_ENABLED=0
+          export GOOS=${{ matrix.target.os }}
+          export GOARCH=${{ matrix.target.arch }}
+          if [ -n "${{ matrix.target.goarm }}" ]; then export GOARM=${{ matrix.target.goarm }}; fi
+          if [ -n "${{ matrix.target.gomips }}" ]; then export GOMIPS=${{ matrix.target.gomips }}; fi
+          suffix="${{ matrix.target.suffix }}"
+          go build -trimpath -tags frps -o "bin/frps_${suffix}" ./cmd/frps
+          go build -trimpath -tags frpc -o "bin/frpc_${suffix}" ./cmd/frpc
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v5
         with:
-          name: frp-linux
+          name: frp-${{ matrix.target.suffix }}
           path: bin/
