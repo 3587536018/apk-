@@ -43,7 +43,7 @@
             fill="currentColor"
           />
         </svg>
-        Add
+        添加
       </button>
     </template>
   </div>

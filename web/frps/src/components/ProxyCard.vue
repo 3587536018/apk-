@@ -44,7 +44,7 @@
         </div>
 
         <div class="status-badge" :class="proxy.status">
-          {{ proxy.status }}
+          {{ proxy.status === 'online' ? '在线' : '离线' }}
         </div>
       </div>
     </div>

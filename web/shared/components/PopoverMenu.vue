@@ -102,7 +102,7 @@ const props = withDefaults(defineProps<Props>(), {
   disabled: false,
   fullWidth: false,
   filterable: false,
-  filterPlaceholder: 'Search...',
+  filterPlaceholder: '搜索...',
   displayValue: '',
   clearable: false,
 })

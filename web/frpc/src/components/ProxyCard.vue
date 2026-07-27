@@ -7,7 +7,7 @@
           <span class="type-tag">{{ proxy.type.toUpperCase() }}</span>
           <span class="status-pill" :class="statusClass">
             <span class="status-dot"></span>
-            {{ proxy.status }}
+            {{ statusLabel }}
           </span>
         </div>
         <div class="card-address">
@@ -79,13 +79,22 @@ defineEmits<{
 }>()
 
 const displaySource = computed(() => {
-  return props.proxy.source === 'store' ? 'store' : 'config'
+  return props.proxy.source === 'store' ? '存储' : '配置'
 })
 
 const localDisplay = computed(() => {
   if (props.proxy.plugin) return `plugin:${props.proxy.plugin}`
   return props.proxy.local_addr || ''
 })
+
+const statusLabels: Record<string, string> = {
+  running: '运行中',
+  error: '错误',
+  waiting: '等待中',
+  disabled: '已禁用',
+}
+
+const statusLabel = computed(() => statusLabels[props.proxy.status] || props.proxy.status)
 
 const statusClass = computed(() => {
   switch (props.proxy.status) {

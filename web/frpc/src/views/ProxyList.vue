@@ -4,7 +4,7 @@
     <div class="page-top">
       <!-- Header -->
       <div class="page-header">
-        <h2 class="page-title">Proxies</h2>
+        <h2 class="page-title">代理</h2>
       </div>
 
       <!-- Tabs -->
@@ -27,21 +27,21 @@
       <template v-if="activeTab === 'status'">
         <StatusPills v-if="!isMobile" :items="proxyStore.proxies" v-model="statusFilter" />
         <div class="filter-bar">
-          <el-input v-model="searchText" placeholder="Search..." clearable class="search-input">
+          <el-input v-model="searchText" placeholder="搜索..." clearable class="search-input">
             <template #prefix><el-icon><Search /></el-icon></template>
           </el-input>
-          <FilterDropdown v-model="sourceFilter" label="Source" :options="sourceOptions" :min-width="140" :is-mobile="isMobile" />
-          <FilterDropdown v-model="typeFilter" label="Type" :options="typeOptions" :min-width="140" :is-mobile="isMobile" />
+          <FilterDropdown v-model="sourceFilter" label="来源" :options="sourceOptions" :min-width="140" :is-mobile="isMobile" />
+          <FilterDropdown v-model="typeFilter" label="类型" :options="typeOptions" :min-width="140" :is-mobile="isMobile" />
         </div>
       </template>
 
       <!-- Store Tab Filters -->
       <template v-if="activeTab === 'store' && proxyStore.storeEnabled">
         <div class="filter-bar">
-          <el-input v-model="storeSearch" placeholder="Search..." clearable class="search-input">
+          <el-input v-model="storeSearch" placeholder="搜索..." clearable class="search-input">
             <template #prefix><el-icon><Search /></el-icon></template>
           </el-input>
-          <FilterDropdown v-model="storeTypeFilter" label="Type" :options="storeTypeOptions" :min-width="140" :is-mobile="isMobile" />
+          <FilterDropdown v-model="storeTypeFilter" label="类型" :options="storeTypeOptions" :min-width="140" :is-mobile="isMobile" />
         </div>
       </template>
     </div>
@@ -166,9 +166,10 @@ const sourceOptions = computed(() => {
   proxyStore.proxies.forEach((p) => {
     sources.add(displaySource(p))
   })
+  const sourceLabels: Record<string, string> = { config: '配置', store: '存储' }
   return Array.from(sources)
     .sort()
-    .map((s) => ({ label: s, value: s }))
+    .map((s) => ({ label: sourceLabels[s] || s, value: s }))
 })
 
 const PROXY_TYPE_ORDER = ['tcp', 'udp', 'http', 'https', 'tcpmux', 'stcp', 'sudp', 'xtcp']

@@ -10,7 +10,7 @@
       <ConfigField label="最小重试间隔 (秒)" type="number" v-model="form.minRetryInterval" :min="0" :readonly="readonly" />
     </div>
     <div class="field-row two-col">
-      <ConfigField label="回退至" type="text" v-model="form.fallbackTo" placeholder="回退访问者名称" :readonly="readonly" />
+      <ConfigField label="回退至" type="text" v-model="form.fallbackTo" placeholder="回退的访问端名称" :readonly="readonly" />
       <ConfigField label="回退超时 (毫秒)" type="number" v-model="form.fallbackTimeoutMs" :min="0" :readonly="readonly" />
     </div>
   </ConfigSection>
@@ -19,7 +19,7 @@
   <ConfigSection title="NAT 穿透" collapsible :readonly="readonly"
     :has-value="form.natTraversalDisableAssistedAddrs">
     <ConfigField label="禁用辅助地址" type="switch" v-model="form.natTraversalDisableAssistedAddrs"
-      tip="仅使用 STUN 发现的公共地址" :readonly="readonly" />
+      tip="仅使用 STUN 发现的公网地址" :readonly="readonly" />
   </ConfigSection>
 </template>
 

@@ -1,7 +1,7 @@
 <template>
   <ConfigSection title="NAT 穿透" collapsible :readonly="readonly" :has-value="form.natTraversalDisableAssistedAddrs">
     <ConfigField label="禁用辅助地址" type="switch" v-model="form.natTraversalDisableAssistedAddrs"
-      tip="仅使用 STUN 发现的公共地址" :readonly="readonly" />
+      tip="仅使用 STUN 发现的公网地址" :readonly="readonly" />
   </ConfigSection>
 </template>
 

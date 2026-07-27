@@ -3,7 +3,7 @@
     <!-- Fixed Header -->
     <div class="detail-top">
       <nav class="breadcrumb">
-        <router-link to="/visitors" class="breadcrumb-link">访问者</router-link>
+        <router-link to="/visitors" class="breadcrumb-link">访问端</router-link>
         <span class="breadcrumb-sep">&rsaquo;</span>
         <span class="breadcrumb-current">{{ visitorName }}</span>
       </nav>
@@ -24,10 +24,10 @@
     </div>
 
     <div v-if="notFound" class="not-found">
-      <p class="empty-text">访问者未找到</p>
-      <p class="empty-hint">访问者 "{visitorName}" 不存在。</p>
+      <p class="empty-text">访问端未找到</p>
+      <p class="empty-hint">访问端 "{visitorName}" 不存在。</p>
       <ActionButton variant="outline" @click="router.push('/visitors')">
-        返回访问者列表
+        返回访问端列表
       </ActionButton>
     </div>
 
@@ -80,7 +80,7 @@ onMounted(async () => {
       notFound.value = true
     } else {
       notFound.value = true
-      ElMessage.error('加载访问者失败: ' + err.message)
+      ElMessage.error('加载访问端失败: ' + err.message)
     }
   } finally {
     loading.value = false

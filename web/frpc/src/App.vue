@@ -58,7 +58,7 @@
             :class="{ active: route.path.startsWith('/visitors') }"
             @click="closeSidebar"
           >
-            访问者
+            访问端
           </router-link>
           <router-link
             to="/config"

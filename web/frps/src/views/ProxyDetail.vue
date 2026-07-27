@@ -44,7 +44,7 @@
                 <h1 class="proxy-name">{{ proxy.name }}</h1>
                 <span class="type-tag">{{ proxy.type.toUpperCase() }}</span>
                 <span class="status-badge" :class="proxy.status">
-                  {{ proxy.status }}
+                  {{ proxy.status === 'online' ? '在线' : '离线' }}
                 </span>
               </div>
               <div class="header-meta">

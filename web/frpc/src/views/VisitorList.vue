@@ -2,7 +2,7 @@
   <div class="visitors-page">
     <!-- Header -->
     <div class="page-header">
-      <h2 class="page-title">Visitors</h2>
+      <h2 class="page-title">访问端</h2>
     </div>
 
     <!-- Tab bar -->
@@ -15,7 +15,7 @@
           <el-icon><Refresh /></el-icon>
         </ActionButton>
         <ActionButton v-if="visitorStore.storeEnabled" size="small" @click="handleCreate">
-          + 新建访问者
+          + 新建访问端
         </ActionButton>
       </div>
     </div>
@@ -29,10 +29,10 @@ path = "./frpc_store.json"</pre>
 
       <template v-else>
         <div class="filter-bar">
-          <el-input v-model="searchText" placeholder="Search..." clearable class="search-input">
+          <el-input v-model="searchText" placeholder="搜索..." clearable class="search-input">
             <template #prefix><el-icon><Search /></el-icon></template>
           </el-input>
-          <FilterDropdown v-model="typeFilter" label="Type" :options="typeOptions" :min-width="140" :is-mobile="isMobile" />
+          <FilterDropdown v-model="typeFilter" label="类型" :options="typeOptions" :min-width="140" :is-mobile="isMobile" />
         </div>
 
         <div v-if="filteredVisitors.length > 0" class="visitor-list">
@@ -66,13 +66,13 @@ path = "./frpc_store.json"</pre>
           </div>
         </div>
         <div v-else class="empty-state">
-          <p class="empty-text">未找到访问者</p>
-          <p class="empty-hint">点击"新建访问者"来创建一个。</p>
+          <p class="empty-text">未找到访问端</p>
+          <p class="empty-hint">点击"新建访问端"来创建一个。</p>
         </div>
       </template>
     </div>
 
-    <ConfirmDialog v-model="deleteDialog.visible" title="删除访问者"
+    <ConfirmDialog v-model="deleteDialog.visible" title="删除访问端"
       :message="deleteDialog.message" confirm-text="删除" danger
       :loading="deleteDialog.loading" :is-mobile="isMobile" @confirm="doDelete" />
   </div>
@@ -152,7 +152,7 @@ const goToDetail = (name: string) => {
 
 const handleDelete = (name: string) => {
   deleteDialog.name = name
-  deleteDialog.message = `确定要删除访问者 "${name}"？此操作不可撤销。`
+  deleteDialog.message = `确定要删除访问端 "${name}"？此操作不可撤销。`
   deleteDialog.visible = true
 }
 
@@ -160,7 +160,7 @@ const doDelete = async () => {
   deleteDialog.loading = true
   try {
     await visitorStore.deleteVisitor(deleteDialog.name)
-    ElMessage.success('访问者已删除')
+    ElMessage.success('访问端已删除')
     deleteDialog.visible = false
     fetchData()
   } catch (err: any) {

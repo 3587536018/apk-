@@ -92,7 +92,7 @@
               <div class="proxy-type-count">{{ count }}</div>
             </div>
             <div v-if="!hasActiveProxies" class="no-data">
-              No active proxies
+              无活跃代理
             </div>
           </div>
         </el-card>

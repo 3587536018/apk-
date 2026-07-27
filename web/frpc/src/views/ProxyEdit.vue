@@ -29,8 +29,8 @@
 
     <ConfirmDialog
       v-model="leaveDialogVisible"
-      title="未保存的更改"
-      message="您有未保存的更改，确定要离开吗？"
+      title="未保存的修改"
+      message="您有未保存的修改，确定要离开吗？"
       :is-mobile="isMobile"
       @confirm="handleLeaveConfirm"
       @cancel="handleLeaveCancel"

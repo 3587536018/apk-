@@ -42,7 +42,7 @@ interface Props {
 }
 
 const props = withDefaults(defineProps<Props>(), {
-  allLabel: 'All',
+  allLabel: '全部',
   width: 150,
 })
 

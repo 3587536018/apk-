@@ -37,7 +37,7 @@
       selectable
       full-width
       filterable
-      :filter-placeholder="placeholder || 'Select...'"
+      :filter-placeholder="placeholder || '选择...'"
       @update:model-value="$emit('update:modelValue', $event)"
     >
       <template #default="{ filterText }">

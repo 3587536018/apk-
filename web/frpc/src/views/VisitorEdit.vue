@@ -2,9 +2,9 @@
   <div class="visitor-edit-page">
     <div class="edit-header">
       <nav class="breadcrumb">
-        <router-link to="/visitors" class="breadcrumb-item">访问者</router-link>
+        <router-link to="/visitors" class="breadcrumb-item">访问端</router-link>
         <span class="breadcrumb-separator">›</span>
-        <span class="breadcrumb-current">{{ isEditing ? '编辑访问者' : '新建访问者' }}</span>
+        <span class="breadcrumb-current">{{ isEditing ? '编辑访问端' : '新建访问端' }}</span>
       </nav>
       <div class="header-actions">
         <ActionButton variant="outline" size="small" @click="goBack">取消</ActionButton>
@@ -28,8 +28,8 @@
 
     <ConfirmDialog
       v-model="leaveDialogVisible"
-      title="未保存的更改"
-      message="您有未保存的更改，确定要离开吗？"
+      title="未保存的修改"
+      message="您有未保存的修改，确定要离开吗？"
       :is-mobile="isMobile"
       @confirm="handleLeaveConfirm"
       @cancel="handleLeaveCancel"
@@ -157,7 +157,7 @@ const loadVisitor = async () => {
     form.value = storeVisitorToForm(res)
     await nextTick()
   } catch (err: any) {
-    ElMessage.error('加载访问者失败: ' + err.message)
+    ElMessage.error('加载访问端失败: ' + err.message)
     router.push('/visitors')
   } finally {
     pageLoading.value = false
@@ -182,10 +182,10 @@ const handleSave = async () => {
     const data = formToStoreVisitor(form.value)
     if (isEditing.value) {
       await visitorStore.updateVisitor(form.value.name, data)
-      ElMessage.success('访问者已更新')
+      ElMessage.success('访问端已更新')
     } else {
       await visitorStore.createVisitor(data)
-      ElMessage.success('访问者已创建')
+      ElMessage.success('访问端已创建')
     }
     formSaved.value = true
     router.push('/visitors')

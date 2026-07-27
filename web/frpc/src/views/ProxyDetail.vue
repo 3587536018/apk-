@@ -3,7 +3,7 @@
     <!-- Fixed Header -->
     <div class="detail-top">
       <nav class="breadcrumb">
-        <router-link :to="isStore ? '/proxies?tab=store' : '/proxies'" class="breadcrumb-link">Proxies</router-link>
+        <router-link :to="isStore ? '/proxies?tab=store' : '/proxies'" class="breadcrumb-link">代理</router-link>
         <span class="breadcrumb-sep">&rsaquo;</span>
         <span class="breadcrumb-current">{{ proxyName }}</span>
       </nav>
@@ -15,7 +15,7 @@
               <h2 class="detail-title">{{ proxy.name }}</h2>
               <span class="status-pill" :class="statusClass">
                 <span class="status-dot"></span>
-                {{ proxy.status }}
+                {{ statusLabel }}
               </span>
             </div>
             <p class="header-subtitle">
@@ -137,8 +137,17 @@ onMounted(async () => {
   }
 })
 
+const statusLabels: Record<string, string> = {
+  running: '运行中',
+  error: '错误',
+  waiting: '等待中',
+  disabled: '已禁用',
+}
+
+const statusLabel = computed(() => statusLabels[proxy.value?.status || ''] || proxy.value?.status || '')
+
 const displaySource = computed(() =>
-  isStore.value ? 'store' : 'config',
+  isStore.value ? '存储' : '配置',
 )
 
 const statusClass = computed(() => {
