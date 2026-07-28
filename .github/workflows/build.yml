@@ -40,12 +40,14 @@ jobs:
           go build -trimpath -ldflags="-s -w" -o bin/frps.exe ./cmd/frps
           go build -trimpath -ldflags="-s -w" -o bin/frpc.exe ./cmd/frpc
 
-      - name: Install UPX
-        run: choco install upx -y 2>&1 || Write-Host "UPX not available, skipping"
+      - name: Download UPX 4.2.4
+        run: |
+          curl -fsSL -o upx.zip https://github.com/upx/upx/releases/download/v4.2.4/upx-4.2.4-win64.zip
+          unzip -j upx.zip upx-4.2.4-win64/upx.exe -d .
+          .\upx.exe --version
 
-      - name: Compress with UPX
-        continue-on-error: true
-        run: upx --best bin/frps.exe bin/frpc.exe 2>&1
+      - name: Compress with UPX 4.2.4
+        run: .\upx.exe --best --lzma bin/frps.exe bin/frpc.exe 2>&1
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v6
@@ -99,12 +101,15 @@ jobs:
           go build -trimpath -ldflags="-s -w" -tags frps -o "bin/frps_${suffix}" ./cmd/frps
           go build -trimpath -ldflags="-s -w" -tags frpc -o "bin/frpc_${suffix}" ./cmd/frpc
 
-      - name: Install UPX
-        run: sudo apt-get update -qq && sudo apt-get install -y -qq upx-ucl 2>&1 || echo "UPX not available, skipping"
+      - name: Download UPX 4.2.4
+        run: |
+          curl -fsSL -o upx.tar.xz https://github.com/upx/upx/releases/download/v4.2.4/upx-4.2.4-amd64_linux.tar.xz
+          tar -xf upx.tar.xz
+          sudo cp upx-4.2.4-amd64_linux/upx /usr/local/bin/
+          upx --version
 
-      - name: Compress with UPX
-        continue-on-error: true
-        run: upx --best bin/* 2>&1
+      - name: Compress with UPX 4.2.4
+        run: upx --best --lzma bin/* 2>&1
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v6
